@@ -52,7 +52,7 @@ int nsh_create_container(nsh_container_config_t *config)
     }
     stack_top = stack + NSH_STACK_SIZE;
 
-    flags = SIGCHLD | CLONE_NEWUTS;
+    flags = SIGCHLD | CLONE_NEWUTS | CLONE_NEWPID | CLONE_NEWIPC;
     child_tid = clone(nsh_container_startup, stack_top, flags, config);
     if (child_tid == -1) {
         perror("[x] Clone failed");
