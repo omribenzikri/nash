@@ -7,21 +7,22 @@
 #include <unistd.h>
 #include <string.h>
 #include <signal.h>
-#include <sys/utsname.h>
+#include <sys/wait.h>
 
 const int NSH_STACK_SIZE = 1024 * 1024;
 
 typedef struct  {
     const char *hostname;
     const char *exec_path;
+    char **exec_argv;
+    char **exec_envp;
 } nsh_container_config_t;
 
 
 int nsh_container_startup(void *data)
 {
-    int err;
     nsh_container_config_t *config = data;
-    struct utsname uts;
+    int err;
 
     err = sethostname(config->hostname, strlen(config->hostname));
     if (err) {
@@ -29,64 +30,60 @@ int nsh_container_startup(void *data)
         return  -1;
     }
 
-    err = uname(&uts);
-    if (err) {
-        perror("[x] Failed to fetch system info");
-        return -1;
-    }
-    printf("[+] Hostname in container: %s\n", uts.nodename);
+    execve(config->exec_path, config->exec_argv, config->exec_argv);
 
-    return 0;
+    perror("[x] Failed to execute container program");
+    return -1;
 }
 
 int nsh_create_container(nsh_container_config_t *config)
 {
     uint8_t *stack;
     uint8_t *stack_top;
-    int ns_flags;
     int flags;
     int child_tid;
-    int err;
-    struct utsname uts;
 
     printf("[+] Setting up a stack of size: %d bytes\n", NSH_STACK_SIZE);
 
     stack = malloc(NSH_STACK_SIZE);
     if (stack == NULL) {
         perror("[x] Stack allocation failed");
-        return EXIT_FAILURE;
+        return -1;
     }
     stack_top = stack + NSH_STACK_SIZE;
 
-    ns_flags = CLONE_NEWUTS;
-    flags = ns_flags | SIGCHLD;
-
+    flags = SIGCHLD | CLONE_NEWUTS;
     child_tid = clone(nsh_container_startup, stack_top, flags, config);
     if (child_tid == -1) {
         perror("[x] Clone failed");
-        return EXIT_FAILURE;
+        return -1;
     }
 
     printf("[+] Successfully cloned child\n");
 
-    err = uname(&uts);
-    if (err) {
-        perror("[x] Failed to fetch system info");
+    if (waitpid(child_tid, NULL, 0) == -1) {
+        perror("[x] Awaiting child failed");
         return -1;
     }
-    printf("[+] Hostname in container: %s\n", uts.nodename);
 
     return 0;
 }
 
-int main()
+int main(int argc, char **argv)
 {
+    nsh_container_config_t config;
+    char *envp[] = {NULL};
     int err;
 
-    nsh_container_config_t config = {
-        .hostname = "container",
-        .exec_path = "/bin/bash"
-    };
+    if (argc < 2) {
+        fprintf(stderr, "Usage: nash COMMAND [ARG...]\n");
+        return EXIT_FAILURE;
+    }
+
+    config.hostname = "container";
+    config.exec_path = argv[1];
+    config.exec_argv = argv + 1;
+    config.exec_envp = envp;
 
     err = nsh_create_container(&config);
     if (err)
