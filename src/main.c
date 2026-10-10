@@ -28,6 +28,7 @@ int nsh_pivot_root(const char *root)
 {
     const char *old_root_rel = "/old-rootfs";
     char old_root_abs[PATH_MAX];
+    int ret = 0;
     int err;
 
     snprintf(old_root_abs, sizeof(old_root_abs), "%s/%s", root, old_root_rel);
@@ -53,28 +54,33 @@ int nsh_pivot_root(const char *root)
     err = syscall(SYS_pivot_root, root, old_root_abs);
     if (err) {
         perror("[x] Failed to pivot rootfs");
+
+        err = rmdir(old_root_abs);
+        if (err)
+            perror("[x] Failed to delete old rootfs directory");
+
         return -1;
     }
 
     err = chdir("/");
     if (err) {
         perror("[x] Failed to change working directory");
-        return -1;
+        ret = -1;
     }
 
     err = umount2(old_root_rel, MNT_DETACH);
     if (err) {
         perror("[x] Failed to unmount old rootfs");
-        return -1;
+        ret = -1;
     }
 
     err = rmdir(old_root_rel);
     if (err) {
         perror("[x] Failed to delete old rootfs mount system");
-        return -1;
+        ret = -1;
     }
 
-    return 0;
+    return ret;
 }
 
 int nsh_container_startup(void *data)
@@ -104,6 +110,7 @@ int nsh_create_container(nsh_container_config_t *config)
     uint8_t *stack_top;
     int flags;
     int child_tid;
+    int ret = 0;
 
     printf("[+] Setting up a stack of size: %d bytes\n", NSH_STACK_SIZE);
 
@@ -118,17 +125,21 @@ int nsh_create_container(nsh_container_config_t *config)
     child_tid = clone(nsh_container_startup, stack_top, flags, config);
     if (child_tid == -1) {
         perror("[x] Clone failed");
-        return -1;
+        ret = -1;
+        goto out;
     }
 
     printf("[+] Successfully cloned child\n");
 
     if (waitpid(child_tid, NULL, 0) == -1) {
         perror("[x] Awaiting child failed");
-        return -1;
+        ret = -1;
+        goto out;
     }
 
-    return 0;
+out:
+    free(stack);
+    return ret;
 }
 
 int main(int argc, char **argv)
