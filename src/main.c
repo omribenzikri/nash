@@ -20,11 +20,11 @@
 #include "filesystem.h"
 #include "resources.h"
 
-const int NSH_STACK_SIZE = 1024 * 1024;
-const int NSH_HOSTNAME_LEN = 13;
+#define NSH_STACK_SIZE 1024 * 1024
+#define NSH_HOSTNAME_LEN 13
 
 typedef struct {
-    uuid_t id;
+    char hostname[NSH_HOSTNAME_LEN];
     const char *image_path;
     const char *exec_path;
     char **exec_argv;
@@ -59,33 +59,16 @@ int nsh_verify_system(bool *compat)
     return 0;
 }
 
-int nsh_set_hostname(uuid_t container_id)
-{
-    assert(NSH_HOSTNAME_LEN < UUID_STR_LEN);
-
-    char uuid_string[UUID_STR_LEN];
-    char *hostname = uuid_string + UUID_STR_LEN - NSH_HOSTNAME_LEN;
-    int err;
-
-    uuid_unparse_lower(container_id, uuid_string);
-
-    err = sethostname(hostname, strlen(hostname));
-    if (err) {
-        perror("[x] Failed to set container hostname");
-        return  -1;
-    }
-
-    return 0;
-}
-
 int nsh_container_startup(void *data)
 {
     nsh_container_config_t *config = data;
     int err;
 
-    err = nsh_set_hostname(config->id);
-    if (err)
-        return -1;
+    err = sethostname(config->hostname, strlen(config->hostname));
+    if (err) {
+        perror("[x] Failed to set container hostname");
+        return  -1;
+    }
 
     umask(0);
 
@@ -107,22 +90,35 @@ int nsh_container_startup(void *data)
     return -1;
 }
 
+// Assuming the buffer is at least NSH_HOSTNAME_LEN bytes
+void nsh_generate_hostname(uuid_t container_id, char *buf)
+{
+    char uuid_string[UUID_STR_LEN];
+    char *hostname = uuid_string + UUID_STR_LEN - NSH_HOSTNAME_LEN;
+
+    assert(NSH_HOSTNAME_LEN < UUID_STR_LEN);
+    uuid_unparse_lower(container_id, uuid_string);
+    strncpy(buf, hostname, NSH_HOSTNAME_LEN - 1);
+}
+
 int nsh_create_container(nsh_container_config_t *config, nsh_container_t *container)
 {
     uint8_t *stack;
     uint8_t *stack_top;
     int flags;
-    pid_t child_pid;
     int ret = 0;
     int err;
 
-    printf("[+] Setting up a stack of size: %d bytes\n", NSH_STACK_SIZE);
+    uuid_generate_random(container->id);
+    nsh_generate_hostname(container->id, config->hostname);
 
-    err = nsh_create_cgroup(config->id);
+    err = nsh_create_cgroup(container->id);
     if (err) {
         ret = -1;
         goto out;
     }
+
+    printf("[+] Setting up a stack of size: %d bytes\n", NSH_STACK_SIZE);
 
     stack = malloc(NSH_STACK_SIZE);
     if (stack == NULL) {
@@ -135,8 +131,8 @@ int nsh_create_container(nsh_container_config_t *config, nsh_container_t *contai
     flags = SIGCHLD |
             CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWPID |
             CLONE_NEWIPC;
-    child_pid = clone(nsh_container_startup, stack_top, flags, config);
-    if (child_pid == -1) {
+    container->pid = clone(nsh_container_startup, stack_top, flags, config);
+    if (container->pid == -1) {
         perror("[x] Clone failed");
         ret = -1;
         goto out_free_stack;
@@ -144,13 +140,10 @@ int nsh_create_container(nsh_container_config_t *config, nsh_container_t *contai
 
     printf("[+] Successfully cloned child\n");
 
-    uuid_copy(container->id, config->id);
-    container->pid = child_pid;
-
 out_free_stack:
     free(stack);
 out_del_cgroup:
-    nsh_delete_cgroup(config->id);
+    nsh_delete_cgroup(container->id);
 out:
     return ret;
 }
@@ -174,7 +167,6 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    uuid_generate_random(config.id);
     config.image_path = argv[1];
     config.exec_path = argv[2];
     config.exec_argv = argv + 2;
