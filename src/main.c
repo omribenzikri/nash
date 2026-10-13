@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <sched.h>
 #include <unistd.h>
 #include <string.h>
@@ -12,6 +13,8 @@
 #include <sys/wait.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
+#include <sys/statfs.h>
+#include <linux/magic.h>
 #include <uuid/uuid.h>
 #include "container.h"
 #include "filesystem.h"
@@ -27,6 +30,34 @@ typedef struct {
     char **exec_argv;
     char **exec_envp;
 } nsh_container_config_t;
+
+int nsh_verify_cgroup_version(bool *compat)
+{
+    struct statfs st;
+    int err;
+
+    err = statfs("/sys/fs/cgroup", &st);
+    if (err) {
+        perror("[x] Failed to fetch cgroup filesystem type");
+        return -1;
+    }
+    *compat = st.f_type == CGROUP2_SUPER_MAGIC;
+
+    return 0;
+}
+
+int nsh_verify_system(bool *compat)
+{
+    int err;
+
+    err = nsh_verify_cgroup_version(compat);
+    if (err)
+        return -1;
+    if (!*compat)
+        fprintf(stderr, "[x] Unsupported cgroup version detected\n");
+
+    return 0;
+}
 
 int nsh_set_hostname(uuid_t container_id)
 {
@@ -129,10 +160,17 @@ int main(int argc, char **argv)
     nsh_container_config_t config = {0};
     nsh_container_t container = {0};
     char *envp[] = {NULL};
+    bool system_compat;
     int err;
 
     if (argc < 3) {
         fprintf(stderr, "Usage: nash IMAGE COMMAND [ARG...]\n");
+        return EXIT_FAILURE;
+    }
+
+    err = nsh_verify_system(&system_compat);
+    if (err | !system_compat) {
+        fprintf(stderr, "[x] Failed to verify system compatibility, exiting\n");
         return EXIT_FAILURE;
     }
 
@@ -143,8 +181,10 @@ int main(int argc, char **argv)
     config.exec_envp = envp;
 
     err = nsh_create_container(&config, &container);
-    if (err)
+    if (err) {
+        fprintf(stderr, "[x] Failed to create container, exiting\n");
         return EXIT_FAILURE;
+    }
 
     if (waitpid(container.pid, NULL, 0) == -1) {
         perror("[x] Awaiting child failed");
