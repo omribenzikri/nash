@@ -2,47 +2,47 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdint.h>
-#include <sched.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <string.h>
 #include <assert.h>
 #include <signal.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
+#include <linux/sched.h>
 #include <uuid/uuid.h>
 #include "filesystem.h"
 #include "resources.h"
 #include "container.h"
 
-int nsh_container_startup(void *data)
+void nsh_container_startup(nsh_container_config_t *config)
 {
-    nsh_container_config_t *config = data;
     int err;
 
     err = sethostname(config->hostname, strlen(config->hostname));
     if (err) {
         perror("[x] Failed to set container hostname");
-        return  -1;
+        exit(EXIT_FAILURE);
     }
 
     umask(0);
 
     err = nsh_pivot_root(config->image_path);
     if (err)
-        return -1;
+        exit(EXIT_FAILURE);
 
     err = nsh_mount_essentials();
     if (err)
-        return -1;
+        exit(EXIT_FAILURE);
 
     err = nsh_populate_dev();
     if (err)
-        return -1;
+        exit(EXIT_FAILURE);
 
     execve(config->exec_path, config->exec_argv, config->exec_argv);
 
     perror("[x] Failed to execute container program");
-    return -1;
+    exit(EXIT_FAILURE);
 }
 
 // Assuming the buffer is at least NSH_HOSTNAME_LEN bytes long
@@ -56,11 +56,33 @@ void nsh_generate_hostname(uuid_t container_id, char *buf)
     strncpy(buf, hostname, NSH_HOSTNAME_LEN - 1);
 }
 
+int nsh_clone_container(nsh_container_config_t *config, nsh_container_t *container)
+{
+    pid_t pid;
+
+    const int namespace_flags = CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWPID | CLONE_NEWIPC;
+    struct clone_args args = {
+        .flags  = namespace_flags,
+        .exit_signal = SIGCHLD,
+    };
+
+    pid = syscall(SYS_clone3, &args, sizeof(args));
+    if (pid == -1) {
+        perror("[x] Clone failed");
+        return -1;
+    }
+
+    if (pid == 0) {
+        nsh_container_startup(config);
+        assert(false);
+    }
+
+    container->pid = pid;
+    return 0;
+}
+
 int nsh_create_container(nsh_container_config_t *config, nsh_container_t *container)
 {
-    uint8_t *stack;
-    uint8_t *stack_top;
-    int flags;
     int err;
 
     uuid_generate_random(container->id);
@@ -70,30 +92,14 @@ int nsh_create_container(nsh_container_config_t *config, nsh_container_t *contai
     if (err)
         goto error;
 
-    printf("[+] Setting up a stack of size: %d bytes\n", NSH_STACK_SIZE);
-
-    stack = malloc(NSH_STACK_SIZE);
-    if (stack == NULL) {
-        perror("[x] Stack allocation failed");
+    err = nsh_clone_container(config, container);
+    if (err)
         goto error_del_cgroup;
-    }
-    stack_top = stack + NSH_STACK_SIZE;
-
-    flags = SIGCHLD |
-            CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWPID |
-            CLONE_NEWIPC;
-    container->pid = clone(nsh_container_startup, stack_top, flags, config);
-    if (container->pid == -1) {
-        perror("[x] Clone failed");
-        goto error_free_stack;
-    }
 
     printf("[+] Successfully cloned child\n");
 
     return 0;
 
-error_free_stack:
-    free(stack);
 error_del_cgroup:
     nsh_delete_cgroup(container->id);
 error:
@@ -102,6 +108,5 @@ error:
 
 void nsh_cleanup_container_resources(nsh_container_t *container)
 {
-    free(container->resources.stack);
     nsh_delete_cgroup(container->id);
 }
