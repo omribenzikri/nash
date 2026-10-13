@@ -60,7 +60,9 @@ int main(int argc, char **argv)
 
     // Temporary
     config.resources.cpu_time = 0.5;
+    config.resources.procs = 100;
     config.resources.memory_bytes = 536870912;
+    config.resources.memory_swap_bytes = 134217728;
 
     err = nsh_create_container(&config, &container);
     if (err) {
