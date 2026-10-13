@@ -14,8 +14,6 @@
 #include "resources.h"
 #include "container.h"
 
-#define NSH_STACK_SIZE 1024 * 1024
-
 int nsh_container_startup(void *data)
 {
     nsh_container_config_t *config = data;
@@ -63,25 +61,21 @@ int nsh_create_container(nsh_container_config_t *config, nsh_container_t *contai
     uint8_t *stack;
     uint8_t *stack_top;
     int flags;
-    int ret = 0;
     int err;
 
     uuid_generate_random(container->id);
     nsh_generate_hostname(container->id, config->hostname);
 
     err = nsh_create_cgroup(container->id);
-    if (err) {
-        ret = -1;
-        goto out;
-    }
+    if (err)
+        goto error;
 
     printf("[+] Setting up a stack of size: %d bytes\n", NSH_STACK_SIZE);
 
     stack = malloc(NSH_STACK_SIZE);
     if (stack == NULL) {
         perror("[x] Stack allocation failed");
-        ret = -1;
-        goto out_del_cgroup;
+        goto error_del_cgroup;
     }
     stack_top = stack + NSH_STACK_SIZE;
 
@@ -91,16 +85,23 @@ int nsh_create_container(nsh_container_config_t *config, nsh_container_t *contai
     container->pid = clone(nsh_container_startup, stack_top, flags, config);
     if (container->pid == -1) {
         perror("[x] Clone failed");
-        ret = -1;
-        goto out_free_stack;
+        goto error_free_stack;
     }
 
     printf("[+] Successfully cloned child\n");
 
-out_free_stack:
+    return 0;
+
+error_free_stack:
     free(stack);
-out_del_cgroup:
+error_del_cgroup:
     nsh_delete_cgroup(container->id);
-out:
-    return ret;
+error:
+    return -1;
+}
+
+void nsh_cleanup_container_resources(nsh_container_t *container)
+{
+    free(container->resources.stack);
+    nsh_delete_cgroup(container->id);
 }

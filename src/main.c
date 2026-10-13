@@ -69,5 +69,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
+    nsh_cleanup_container_resources(&container);
+
     return EXIT_SUCCESS;
 }
