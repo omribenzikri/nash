@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 #include <uuid/uuid.h>
+#include "resources.h"
 
 #define NSH_STACK_SIZE 1024 * 1024
 #define NSH_HOSTNAME_LEN 13
@@ -20,6 +21,7 @@ typedef struct {
     char **exec_argv;
     char **exec_envp;
     int cgroup_fd;
+    nsh_resources_t resources;
 } nsh_container_config_t;
 
 int nsh_create_container(nsh_container_config_t *config, nsh_container_t *container);

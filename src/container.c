@@ -91,7 +91,7 @@ int nsh_create_container(nsh_container_config_t *config, nsh_container_t *contai
     uuid_generate_random(container->id);
     nsh_generate_hostname(container->id, config->hostname);
 
-    config->cgroup_fd = nsh_create_cgroup(container->id);
+    config->cgroup_fd = nsh_create_cgroup(container->id, &config->resources);
     if (config->cgroup_fd == -1)
         goto error;
 
