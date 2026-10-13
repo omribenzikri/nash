@@ -13,11 +13,13 @@
 #include <sys/stat.h>
 #include <uuid/uuid.h>
 #include "filesystem.h"
+#include "resources.h"
 
 const int NSH_STACK_SIZE = 1024 * 1024;
 const int NSH_HOSTNAME_LEN = 13;
 
 typedef struct  {
+    uuid_t id;
     const char *image_path;
     const char *exec_path;
     char **exec_argv;
@@ -47,15 +49,13 @@ int nsh_set_hostname(uuid_t container_id)
 int nsh_container_startup(void *data)
 {
     nsh_container_config_t *config = data;
-    uuid_t container_id;
     int err;
 
-    umask(0);
-
-    uuid_generate_random(container_id);
-    err = nsh_set_hostname(container_id);
+    err = nsh_set_hostname(config->id);
     if (err)
         return -1;
+
+    umask(0);
 
     err = nsh_pivot_root(config->image_path);
     if (err)
@@ -82,13 +82,21 @@ int nsh_create_container(nsh_container_config_t *config)
     int flags;
     int child_tid;
     int ret = 0;
+    int err;
 
     printf("[+] Setting up a stack of size: %d bytes\n", NSH_STACK_SIZE);
+
+    err = nsh_create_cgroup(config->id);
+    if (err) {
+        ret = -1;
+        goto out;
+    }
 
     stack = malloc(NSH_STACK_SIZE);
     if (stack == NULL) {
         perror("[x] Stack allocation failed");
-        return -1;
+        ret = -1;
+        goto out_del_cgroup;
     }
     stack_top = stack + NSH_STACK_SIZE;
 
@@ -97,7 +105,7 @@ int nsh_create_container(nsh_container_config_t *config)
     if (child_tid == -1) {
         perror("[x] Clone failed");
         ret = -1;
-        goto out;
+        goto out_free_stack;
     }
 
     printf("[+] Successfully cloned child\n");
@@ -105,17 +113,20 @@ int nsh_create_container(nsh_container_config_t *config)
     if (waitpid(child_tid, NULL, 0) == -1) {
         perror("[x] Awaiting child failed");
         ret = -1;
-        goto out;
+        goto out_free_stack;
     }
 
-out:
+out_free_stack:
     free(stack);
+out_del_cgroup:
+    nsh_delete_cgroup(config->id);
+out:
     return ret;
 }
 
 int main(int argc, char **argv)
 {
-    nsh_container_config_t config;
+    nsh_container_config_t config = {0};
     char *envp[] = {NULL};
     int err;
 
@@ -123,6 +134,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "Usage: nash IMAGE COMMAND [ARG...]\n");
         return EXIT_FAILURE;
     }
+
+    uuid_generate_random(config.id);
 
     config.image_path = argv[1];
     config.exec_path = argv[2];
