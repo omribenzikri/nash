@@ -180,6 +180,12 @@ int nsh_mount_essentials()
         return -1;
     }
 
+    err = mount("cgroup2", "/sys/fs/cgroup", "cgroup2", 0, NULL);
+    if (err) {
+        perror("[x] Failed to mount cgroup2 at /sys/fs/cgroup");
+        return -1;
+    }
+
     return 0;
 }
 
