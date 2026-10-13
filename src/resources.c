@@ -71,6 +71,26 @@ int nsh_apply_resource_limits(int cgroup_fd, nsh_resources_t *resources)
         }
     }
 
+    if (resources->memory_swap_bytes > 0) {
+        snprintf(payload, sizeof(payload), "%lu", resources->memory_swap_bytes);
+
+        err = nsh_write_to_cgroup_file(cgroup_fd, "memory.swap.max", payload);
+        if (err) {
+            fprintf(stderr, "[x] Failed to set swap limit\n");
+            return -1;
+        }
+    }
+
+    if (resources->procs > 0) {
+        snprintf(payload, sizeof(payload), "%u", resources->procs);
+
+        err = nsh_write_to_cgroup_file(cgroup_fd, "pids.max", payload);
+        if (err) {
+            fprintf(stderr, "[x] Failed to set processes limit\n");
+            return -1;
+        }
+    }
+
     return 0;
 }
 
