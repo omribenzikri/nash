@@ -60,10 +60,12 @@ int nsh_clone_container(nsh_container_config_t *config, nsh_container_t *contain
 {
     pid_t pid;
 
-    const int namespace_flags = CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWPID | CLONE_NEWIPC;
+    const int namespace_flags = CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWPID |
+                                CLONE_NEWIPC | CLONE_NEWCGROUP;
     struct clone_args args = {
-        .flags  = namespace_flags,
+        .flags  = namespace_flags | CLONE_INTO_CGROUP,
         .exit_signal = SIGCHLD,
+        .cgroup = config->cgroup_fd
     };
 
     pid = syscall(SYS_clone3, &args, sizeof(args));
@@ -83,17 +85,24 @@ int nsh_clone_container(nsh_container_config_t *config, nsh_container_t *contain
 
 int nsh_create_container(nsh_container_config_t *config, nsh_container_t *container)
 {
-    int err;
+    int clone_err;
+    int close_err;
 
     uuid_generate_random(container->id);
     nsh_generate_hostname(container->id, config->hostname);
 
-    err = nsh_create_cgroup(container->id);
-    if (err)
+    config->cgroup_fd = nsh_create_cgroup(container->id);
+    if (config->cgroup_fd == -1)
         goto error;
 
-    err = nsh_clone_container(config, container);
-    if (err)
+    printf("[+] Successfully created container cgroup\n");
+
+    clone_err = nsh_clone_container(config, container);
+    close_err = close(config->cgroup_fd);
+
+    if (close_err)
+        perror("[x] Failed to close cgroup file descriptor");
+    if (clone_err || close_err)
         goto error_del_cgroup;
 
     printf("[+] Successfully cloned child\n");
