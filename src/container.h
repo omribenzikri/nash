@@ -19,6 +19,7 @@ typedef struct {
     const char *exec_path;
     char **exec_argv;
     char **exec_envp;
+    int cgroup_fd;
 } nsh_container_config_t;
 
 int nsh_create_container(nsh_container_config_t *config, nsh_container_t *container);
