@@ -1,5 +1,6 @@
 CC = gcc
 CFLAGS = -c -Wall -Werror
+LIBS = -luuid
 
 SOURCE_DIR = src
 BUILD_DIR = bin
@@ -11,7 +12,7 @@ OBJECTS = $(subst $(SOURCE_DIR), $(BUILD_DIR), $(patsubst %.c, %.o, $(SOURCES)))
 all: nash
 
 nash: $(OBJECTS)
-	$(CC) -o $(TARGET) $^
+	$(CC) -o $(TARGET) $^ $(LIBS)
 
 $(BUILD_DIR)/%.o: $(SOURCE_DIR)/%.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -o $@ $<

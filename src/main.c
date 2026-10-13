@@ -6,16 +6,18 @@
 #include <sched.h>
 #include <unistd.h>
 #include <string.h>
+#include <assert.h>
 #include <signal.h>
 #include <sys/wait.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
+#include <uuid/uuid.h>
 #include "filesystem.h"
 
 const int NSH_STACK_SIZE = 1024 * 1024;
+const int NSH_HOSTNAME_LEN = 13;
 
 typedef struct  {
-    const char *hostname;
     const char *image_path;
     const char *exec_path;
     char **exec_argv;
@@ -23,18 +25,37 @@ typedef struct  {
 } nsh_container_config_t;
 
 
-int nsh_container_startup(void *data)
+int nsh_set_hostname(uuid_t container_id)
 {
-    nsh_container_config_t *config = data;
+    assert(NSH_HOSTNAME_LEN < UUID_STR_LEN);
+
+    char uuid_string[UUID_STR_LEN];
+    char *hostname = uuid_string + UUID_STR_LEN - NSH_HOSTNAME_LEN;
     int err;
 
-    umask(0);
+    uuid_unparse_lower(container_id, uuid_string);
 
-    err = sethostname(config->hostname, strlen(config->hostname));
+    err = sethostname(hostname, strlen(hostname));
     if (err) {
         perror("[x] Failed to set container hostname");
         return  -1;
     }
+
+    return 0;
+}
+
+int nsh_container_startup(void *data)
+{
+    nsh_container_config_t *config = data;
+    uuid_t container_id;
+    int err;
+
+    umask(0);
+
+    uuid_generate_random(container_id);
+    err = nsh_set_hostname(container_id);
+    if (err)
+        return -1;
 
     err = nsh_pivot_root(config->image_path);
     if (err)
@@ -103,7 +124,6 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    config.hostname = "container";
     config.image_path = argv[1];
     config.exec_path = argv[2];
     config.exec_argv = argv + 2;
