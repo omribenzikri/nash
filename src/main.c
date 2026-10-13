@@ -58,6 +58,10 @@ int main(int argc, char **argv)
     config.exec_argv = argv + 2;
     config.exec_envp = envp;
 
+    // Temporary
+    config.resources.cpu_time = 0.5;
+    config.resources.memory_bytes = 536870912;
+
     err = nsh_create_container(&config, &container);
     if (err) {
         fprintf(stderr, "[x] Failed to create container, exiting\n");
