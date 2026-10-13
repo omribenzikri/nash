@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -c -Wall -Werror
+CFLAGS = -c -Wall -Wextra -Werror
 LIBS = -luuid
 
 SOURCE_DIR = src

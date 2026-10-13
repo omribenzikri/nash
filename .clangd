@@ -1,3 +1,7 @@
 CompileFlags:
-    Add:
-      -xc
+    Add: [
+      "xc",
+      "Wall",
+      "Wextra",
+      "Werror",
+    ]
