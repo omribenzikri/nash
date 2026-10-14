@@ -5,7 +5,7 @@
 #include <uuid/uuid.h>
 
 typedef struct {
-    float cpu_time;
+    uint8_t cpu_time;
     uint32_t procs;
     uint64_t memory_bytes;
     uint64_t memory_swap_bytes;
