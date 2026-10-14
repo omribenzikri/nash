@@ -40,9 +40,9 @@ void nsh_format_cpu_max_payload(char *buf, size_t size, float value)
     const int duration_us = 100000;
     int max_us;
 
-    assert(0 < value && value < 1);
+    assert(0 < value && value <= 100);
 
-    max_us = duration_us * value;
+    max_us = duration_us * (value / 100);
     snprintf(buf, size, "%d %d", max_us, duration_us);
 }
 
