@@ -1,137 +1,150 @@
-#define _GNU_SOURCE
-
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdint.h>
-#include <sched.h>
-#include <unistd.h>
-#include <string.h>
-#include <assert.h>
-#include <signal.h>
+#include <stdbool.h>
+#include <errno.h>
+#include <getopt.h>
+#include <inttypes.h>
 #include <sys/wait.h>
-#include <sys/mount.h>
-#include <sys/stat.h>
-#include <uuid/uuid.h>
-#include "filesystem.h"
+#include <sys/statfs.h>
+#include <linux/magic.h>
+#include "container.h"
 
-const int NSH_STACK_SIZE = 1024 * 1024;
-const int NSH_HOSTNAME_LEN = 13;
+const struct option nsh_options[] = {
+    { "cpu-time",    required_argument, NULL, 'c' },
+    { "procs",       required_argument, NULL, 'p' },
+    { "memory",      required_argument, NULL, 'm' },
+    { "memory-swap", required_argument, NULL, 's' },
+    { NULL,          0,                 NULL,  0  }
+};
 
-typedef struct  {
-    const char *image_path;
-    const char *exec_path;
-    char **exec_argv;
-    char **exec_envp;
-} nsh_container_config_t;
-
-
-int nsh_set_hostname(uuid_t container_id)
+int nsh_verify_cgroup_version(bool *compat)
 {
-    assert(NSH_HOSTNAME_LEN < UUID_STR_LEN);
-
-    char uuid_string[UUID_STR_LEN];
-    char *hostname = uuid_string + UUID_STR_LEN - NSH_HOSTNAME_LEN;
+    struct statfs st;
     int err;
 
-    uuid_unparse_lower(container_id, uuid_string);
-
-    err = sethostname(hostname, strlen(hostname));
+    err = statfs("/sys/fs/cgroup", &st);
     if (err) {
-        perror("[x] Failed to set container hostname");
-        return  -1;
+        perror("[x] Failed to fetch cgroup filesystem type");
+        return -1;
+    }
+    *compat = st.f_type == CGROUP2_SUPER_MAGIC;
+
+    return 0;
+}
+
+int nsh_verify_system(bool *compat)
+{
+    int err;
+
+    err = nsh_verify_cgroup_version(compat);
+    if (err)
+        return -1;
+    if (!*compat)
+        fprintf(stderr, "[x] Unsupported cgroup version detected\n");
+
+    return 0;
+}
+
+int nsh_parse_uint(const char *str, uintmax_t max, uintmax_t *result)
+{
+    char *end;
+    uintmax_t value;
+
+    if (str == NULL || *str == '\0' || *str == '-')
+        return -1;
+
+    errno = 0;
+    value = strtoumax(str, &end, 10);
+
+    if (errno == ERANGE || end == str || *end != '\0' || value > max)
+        return -1;
+
+    *result = value;
+    return 0;
+}
+
+int nsh_parse_options(int argc, char **argv, nsh_container_config_t *config)
+{
+    int opt;
+    int err;
+
+    while ((opt = getopt_long(argc, argv, "", nsh_options, NULL)) != -1) {
+        switch (opt) {
+        case 'c':
+        err = nsh_parse_uint(optarg, UINT8_MAX,
+                            (uintmax_t *)&config->resources.cpu_time);
+        if (err ||config->resources.cpu_time == 0
+                || config->resources.cpu_time > 100)
+            return -1;
+        break;
+        case 'p':
+            err = nsh_parse_uint(optarg, UINT32_MAX,
+                                (uintmax_t *)&config->resources.procs);
+            if (err)
+                return -1;
+            break;
+        case 'm':
+            err = nsh_parse_uint(optarg, UINT64_MAX,
+                                (uintmax_t *)&config->resources.memory_bytes);
+            if (err)
+                return -1;
+            break;
+        case 's':
+            err = nsh_parse_uint(optarg, UINT64_MAX,
+                                (uintmax_t *)&config->resources.memory_swap_bytes);
+            if (err)
+                return -1;
+            break;
+        default:
+            return -1;
+        }
     }
 
     return 0;
 }
 
-int nsh_container_startup(void *data)
-{
-    nsh_container_config_t *config = data;
-    uuid_t container_id;
-    int err;
-
-    umask(0);
-
-    uuid_generate_random(container_id);
-    err = nsh_set_hostname(container_id);
-    if (err)
-        return -1;
-
-    err = nsh_pivot_root(config->image_path);
-    if (err)
-        return -1;
-
-    err = nsh_mount_essentials();
-    if (err)
-        return -1;
-
-    err = nsh_populate_dev();
-    if (err)
-        return -1;
-
-    execve(config->exec_path, config->exec_argv, config->exec_argv);
-
-    perror("[x] Failed to execute container program");
-    return -1;
-}
-
-int nsh_create_container(nsh_container_config_t *config)
-{
-    uint8_t *stack;
-    uint8_t *stack_top;
-    int flags;
-    int child_tid;
-    int ret = 0;
-
-    printf("[+] Setting up a stack of size: %d bytes\n", NSH_STACK_SIZE);
-
-    stack = malloc(NSH_STACK_SIZE);
-    if (stack == NULL) {
-        perror("[x] Stack allocation failed");
-        return -1;
-    }
-    stack_top = stack + NSH_STACK_SIZE;
-
-    flags = SIGCHLD | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWPID | CLONE_NEWIPC;
-    child_tid = clone(nsh_container_startup, stack_top, flags, config);
-    if (child_tid == -1) {
-        perror("[x] Clone failed");
-        ret = -1;
-        goto out;
-    }
-
-    printf("[+] Successfully cloned child\n");
-
-    if (waitpid(child_tid, NULL, 0) == -1) {
-        perror("[x] Awaiting child failed");
-        ret = -1;
-        goto out;
-    }
-
-out:
-    free(stack);
-    return ret;
-}
-
 int main(int argc, char **argv)
 {
-    nsh_container_config_t config;
+    nsh_container_config_t config = {0};
+    nsh_container_t container = {0};
     char *envp[] = {NULL};
+    bool system_compat;
     int err;
 
-    if (argc < 3) {
-        fprintf(stderr, "Usage: nash IMAGE COMMAND [ARG...]\n");
+    err = nsh_parse_options(argc, argv, &config);
+    if (err) {
+        fprintf(stderr, "Error: invalid arguments supplied\n");
         return EXIT_FAILURE;
     }
 
-    config.image_path = argv[1];
-    config.exec_path = argv[2];
-    config.exec_argv = argv + 2;
+    if (argc - optind < 2) {
+        fprintf(stderr, "Usage: nash [OPTIONS] IMAGE COMMAND [ARG...]\n");
+        return EXIT_FAILURE;
+    }
+
+    config.image_path = argv[optind];
+    config.exec_path = argv[optind + 1];
+    config.exec_argv = argv + optind + 1;
     config.exec_envp = envp;
 
-    err = nsh_create_container(&config);
-    if (err)
+    err = nsh_verify_system(&system_compat);
+    if (err | !system_compat) {
+        fprintf(stderr, "[x] Failed to verify system compatibility, exiting\n");
         return EXIT_FAILURE;
+    }
+
+    err = nsh_create_container(&config, &container);
+    if (err) {
+        fprintf(stderr, "[x] Failed to create container, exiting\n");
+        return EXIT_FAILURE;
+    }
+
+    if (waitpid(container.pid, NULL, 0) == -1) {
+        perror("[x] Awaiting child failed");
+        return EXIT_FAILURE;
+    }
+
+    nsh_cleanup_container_resources(&container);
 
     return EXIT_SUCCESS;
 }
