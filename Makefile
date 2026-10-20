@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -c -Wall -Wextra -Werror
-LIBS = -luuid
+LIBS = -luuid -lcap
 
 SOURCE_DIR = src
 BUILD_DIR = bin
