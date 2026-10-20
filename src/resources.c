@@ -20,14 +20,14 @@ int nsh_write_to_cgroup_file(int cgroup_fd, const char *name, const char *payloa
 
     fd = openat(cgroup_fd, name, O_WRONLY);
     if (fd == -1) {
-        snprintf(log, sizeof(log), "[x] Failed to open %s in container cgroup", name);
+        snprintf(log, sizeof(log), "[x] Failed to open %s in container cgroup\n", name);
         perror(log);
         return -1;
     }
 
     nwritten = write(fd, payload, strlen(payload));
     if (nwritten == -1) {
-        snprintf(log, sizeof(log), "[x] Failed to write to %s in container cgroup", name);
+        snprintf(log, sizeof(log), "[x] Failed to write to %s in container cgroup\n", name);
         perror(log);
         return -1;
     }
