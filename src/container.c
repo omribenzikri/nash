@@ -13,6 +13,7 @@
 #include <uuid/uuid.h>
 #include "filesystem.h"
 #include "resources.h"
+#include "capabilities.h"
 #include "container.h"
 
 void nsh_container_startup(nsh_container_config_t *config)
@@ -36,6 +37,10 @@ void nsh_container_startup(nsh_container_config_t *config)
         exit(EXIT_FAILURE);
 
     err = nsh_populate_dev();
+    if (err)
+        exit(EXIT_FAILURE);
+
+    err = nsh_drop_capabilities();
     if (err)
         exit(EXIT_FAILURE);
 
