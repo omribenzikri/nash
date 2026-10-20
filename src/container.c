@@ -61,7 +61,7 @@ int nsh_clone_container(nsh_container_config_t *config, nsh_container_t *contain
     pid_t pid;
 
     const int namespace_flags = CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWPID |
-                                CLONE_NEWIPC | CLONE_NEWCGROUP;
+                                CLONE_NEWIPC | CLONE_NEWCGROUP | CLONE_NEWTIME;
     struct clone_args args = {
         .flags  = namespace_flags | CLONE_INTO_CGROUP,
         .exit_signal = SIGCHLD,
