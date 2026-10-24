@@ -96,6 +96,30 @@ image_spec_schema_image_manifest_schema *nsh_load_oci_image_manifest(
     return manifest;
 }
 
+image_spec_schema_config_schema *nsh_load_oci_image_config(
+    const char *image_path, const char *digest)
+{
+    char config_file_path[PATH_MAX];
+    image_spec_schema_config_schema *config;
+    parser_error parser_err;
+    int err;
+
+    err = nsh_oci_digest_to_blob_path(image_path, digest,
+        config_file_path, sizeof(config_file_path));
+    if (err) {
+        fprintf(stderr, "[x] Failed to resolve config blob path by digest\n");
+        return NULL;
+    }
+
+    config = image_spec_schema_config_schema_parse_file(config_file_path, NULL, &parser_err);
+    if (config == NULL) {
+        fprintf(stderr, "[x] Failed to parse image config: %s\n", parser_err);
+        return NULL;
+    }
+
+    return config;
+}
+
 int nsh_load_oci_image(nsh_oci_image_t *image, const char *path)
 {
     image->layout = nsh_load_oci_image_layout(path);
@@ -116,9 +140,14 @@ int nsh_load_oci_image(nsh_oci_image_t *image, const char *path)
     if (image->manifest == NULL)
         goto error_free_index;
 
+    image->config = nsh_load_oci_image_config(path, image->manifest->config->digest);
+    if (image->config == NULL)
+        goto error_free_manifest;
 
     return 0;
 
+error_free_manifest:
+    free_image_spec_schema_image_manifest_schema(image->manifest);
 error_free_index:
     free_image_spec_schema_image_index_schema(image->index);
 error_free_layout:
@@ -132,4 +161,5 @@ void nsh_free_oci_image(nsh_oci_image_t *image)
     free_image_spec_schema_image_layout_schema(image->layout);
     free_image_spec_schema_image_index_schema(image->index);
     free_image_spec_schema_image_manifest_schema(image->manifest);
+    free_image_spec_schema_config_schema(image->config);
 }
