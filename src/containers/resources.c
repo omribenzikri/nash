@@ -8,7 +8,7 @@
 #include <sys/stat.h>
 #include <linux/limits.h>
 #include <uuid/uuid.h>
-#include "resources.h"
+#include "containers/resources.h"
 
 #define NSH_CGROUP_PAYLOAD_SIZE 128
 

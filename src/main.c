@@ -7,7 +7,7 @@
 #include <sys/wait.h>
 #include <sys/statfs.h>
 #include <linux/magic.h>
-#include "container.h"
+#include "containers/containers.h"
 
 const struct option nsh_options[] = {
     { "cpu-time",    required_argument, NULL, 'c' },

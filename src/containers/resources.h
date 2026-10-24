@@ -1,5 +1,5 @@
-#ifndef _NASH_RESOURCES_H
-#define _NASH_RESOURCES_H
+#ifndef _NASH_CONTAINERS_RESOURCES_H
+#define _NASH_CONTAINERS_RESOURCES_H
 
 #include <stdint.h>
 #include <uuid/uuid.h>

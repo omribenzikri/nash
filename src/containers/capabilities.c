@@ -4,7 +4,7 @@
 #include <sys/prctl.h>
 #include <linux/capability.h>
 #include <linux/prctl.h>
-#include "capabilities.h"
+#include "containers/capabilities.h"
 
 const cap_value_t nsh_allowed_caps[] = {
     CAP_DAC_OVERRIDE,

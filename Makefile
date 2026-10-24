@@ -1,13 +1,17 @@
 CC = gcc
 CFLAGS = -c -Wall -Wextra -Werror
 LIBS = -luuid -lcap
+INCLUDE_DIRS = -Isrc
 
 SOURCE_DIR = src
 BUILD_DIR = bin
 TARGET = $(BUILD_DIR)/nash
 
-SOURCES = $(wildcard $(SOURCE_DIR)/*.c)
-OBJECTS = $(subst $(SOURCE_DIR), $(BUILD_DIR), $(patsubst %.c, %.o, $(SOURCES)))
+SOURCES = $(shell find $(SOURCE_DIR) -type f -name '*.c')
+OBJECTS = $(patsubst $(SOURCE_DIR)/%, $(BUILD_DIR)/%, $(patsubst %.c, %.o, $(SOURCES)))
+
+SOURCE_SUBDIRS = $(shell find $(SOURCE_DIR) -mindepth 1 -type d)
+BUILD_SUBDIRS = $(patsubst $(SOURCE_DIR)/%, $(BUILD_DIR)/%/, $(SOURCE_SUBDIRS))
 
 all: nash
 
@@ -15,10 +19,12 @@ nash: $(OBJECTS)
 	$(CC) -o $(TARGET) $^ $(LIBS)
 
 $(BUILD_DIR)/%.o: $(SOURCE_DIR)/%.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -o $@ $<
+	$(CC) $(INCLUDE_DIRS) $(CFLAGS) -o $@ $<
 
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
+$(BUILD_DIR)/%/:
+	mkdir -p $@
+
+$(BUILD_DIR): $(BUILD_SUBDIRS)
 
 clean:
 	rm -rf $(BUILD_DIR)
