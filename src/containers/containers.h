@@ -14,12 +14,11 @@ typedef struct {
 } nsh_container_t;
 
 typedef struct {
-    char hostname[NSH_HOSTNAME_LEN];
     const char *image_path;
     const char *exec_path;
     char **exec_argv;
     char **exec_envp;
-    int cgroup_fd;
+    char hostname[NSH_HOSTNAME_LEN];
     nsh_resources_t resources;
 } nsh_container_config_t;
 
