@@ -1,10 +1,10 @@
-#ifndef _NASH_CONTAINER_H
-#define _NASH_CONTAINER_H
+#ifndef _NASH_CONTAINERS_CONTAINERS_H
+#define _NASH_CONTAINERS_CONTAINERS_H
 
 #include <stdint.h>
 #include <sys/types.h>
 #include <uuid/uuid.h>
-#include "resources.h"
+#include "containers/resources.h"
 
 #define NSH_HOSTNAME_LEN 13
 

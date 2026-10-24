@@ -1,7 +1,7 @@
 CompileFlags:
     Add: [
-      "xc",
-      "Wall",
-      "Wextra",
-      "Werror",
+      "-xc",
+      "-Wall",
+      "-Wextra",
+      "-Werror"
     ]
