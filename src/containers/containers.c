@@ -61,7 +61,7 @@ void nsh_generate_hostname(uuid_t container_id, char *buf)
     strncpy(buf, hostname, NSH_HOSTNAME_LEN - 1);
 }
 
-int nsh_clone_container(nsh_container_config_t *config, nsh_container_t *container)
+int nsh_clone_container(nsh_container_config_t *config, int cgroup_fd, pid_t *out)
 {
     pid_t pid;
 
@@ -70,7 +70,7 @@ int nsh_clone_container(nsh_container_config_t *config, nsh_container_t *contain
     struct clone_args args = {
         .flags  = namespace_flags | CLONE_INTO_CGROUP,
         .exit_signal = SIGCHLD,
-        .cgroup = config->cgroup_fd
+        .cgroup = cgroup_fd
     };
 
     pid = syscall(SYS_clone3, &args, sizeof(args));
@@ -84,26 +84,27 @@ int nsh_clone_container(nsh_container_config_t *config, nsh_container_t *contain
         assert(false);
     }
 
-    container->pid = pid;
+    *out = pid;
     return 0;
 }
 
 int nsh_create_container(nsh_container_config_t *config, nsh_container_t *container)
 {
+    int cgroup_fd;
     int clone_err;
     int close_err;
 
     uuid_generate_random(container->id);
     nsh_generate_hostname(container->id, config->hostname);
 
-    config->cgroup_fd = nsh_create_cgroup(container->id, &config->resources);
-    if (config->cgroup_fd == -1)
+    cgroup_fd = nsh_create_cgroup(container->id, &config->resources);
+    if (cgroup_fd == -1)
         goto error;
 
     printf("[+] Successfully created container cgroup\n");
 
-    clone_err = nsh_clone_container(config, container);
-    close_err = close(config->cgroup_fd);
+    clone_err = nsh_clone_container(config, cgroup_fd, &container->pid);
+    close_err = close(cgroup_fd);
 
     if (close_err)
         perror("[x] Failed to close cgroup file descriptor");
