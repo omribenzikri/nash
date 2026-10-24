@@ -4,11 +4,13 @@
 #include <ocispec/image_spec_schema_image_layout_schema.h>
 #include <ocispec/image_spec_schema_image_index_schema.h>
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
+#include <ocispec/image_spec_schema_config_schema.h>
 
 typedef struct {
     image_spec_schema_image_layout_schema *layout;
     image_spec_schema_image_index_schema *index;
     image_spec_schema_image_manifest_schema *manifest;
+    image_spec_schema_config_schema *config;
 } nsh_oci_image_t;
 
 int nsh_load_oci_image(nsh_oci_image_t *image, const char *path);
