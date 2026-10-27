@@ -9,3 +9,7 @@ Linux container engine POC in the works, capable of:
 #### Dependencies
 * `libuuid`
 * `libcap`
+* `libjson-c`
+* `libocispec`
+* `libsodium`
+* `libblake3`
