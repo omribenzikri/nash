@@ -5,11 +5,12 @@
 #include <ocispec/image_spec_schema_image_layout_schema.h>
 #include <ocispec/image_spec_schema_image_index_schema.h>
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
+#include <ocispec/image_spec_schema_config_schema.h>
 #include "images/oci.h"
 
-#define NSH_SUPPORTED_IMAGE_LAYOUT_VERSION "1.0.0"
+#define NSH_OCI_SUPPORTED_IMAGE_LAYOUT_VERSION "1.0.0"
 
-int nsh_oci_digest_to_blob_path(const char *image_path, const char *digest, char *buf, size_t size)
+int nsh_oci_digest_to_path(const char *image_path, const char *digest, char *buf, size_t size)
 {
     char digest_mut[PATH_MAX];
     char *alg;
@@ -33,7 +34,7 @@ int nsh_oci_digest_to_blob_path(const char *image_path, const char *digest, char
     return 0;
 }
 
-image_spec_schema_image_layout_schema *nsh_load_oci_image_layout(const char *image_path)
+image_spec_schema_image_layout_schema *nsh_oci_load_image_layout(const char *image_path)
 {
     char layout_file_path[PATH_MAX];
     image_spec_schema_image_layout_schema *layout;
@@ -47,7 +48,7 @@ image_spec_schema_image_layout_schema *nsh_load_oci_image_layout(const char *ima
         return NULL;
     }
 
-    if (strcmp(layout->image_layout_version, NSH_SUPPORTED_IMAGE_LAYOUT_VERSION) != 0) {
+    if (strcmp(layout->image_layout_version, NSH_OCI_SUPPORTED_IMAGE_LAYOUT_VERSION) != 0) {
         fprintf(stderr, "[x] Image contains an unsupported layout version\n");
         return NULL;
     }
@@ -55,7 +56,7 @@ image_spec_schema_image_layout_schema *nsh_load_oci_image_layout(const char *ima
     return layout;
 }
 
-image_spec_schema_image_index_schema *nsh_load_oci_image_index(const char *image_path)
+image_spec_schema_image_index_schema *nsh_oci_load_image_index(const char *image_path)
 {
     char index_file_path[PATH_MAX];
     image_spec_schema_image_index_schema *index;
@@ -72,7 +73,7 @@ image_spec_schema_image_index_schema *nsh_load_oci_image_index(const char *image
     return index;
 }
 
-image_spec_schema_image_manifest_schema *nsh_load_oci_image_manifest(
+image_spec_schema_image_manifest_schema *nsh_oci_load_image_manifest(
     const char *image_path, const char *digest)
 {
     char manifest_file_path[PATH_MAX];
@@ -80,7 +81,7 @@ image_spec_schema_image_manifest_schema *nsh_load_oci_image_manifest(
     parser_error parser_err;
     int err;
 
-    err = nsh_oci_digest_to_blob_path(image_path, digest,
+    err = nsh_oci_digest_to_path(image_path, digest,
         manifest_file_path, sizeof(manifest_file_path));
     if (err) {
         fprintf(stderr, "[x] Failed to resolve manifest blob path by digest\n");
@@ -96,7 +97,7 @@ image_spec_schema_image_manifest_schema *nsh_load_oci_image_manifest(
     return manifest;
 }
 
-image_spec_schema_config_schema *nsh_load_oci_image_config(
+image_spec_schema_config_schema *nsh_oci_load_image_config(
     const char *image_path, const char *digest)
 {
     char config_file_path[PATH_MAX];
@@ -104,7 +105,7 @@ image_spec_schema_config_schema *nsh_load_oci_image_config(
     parser_error parser_err;
     int err;
 
-    err = nsh_oci_digest_to_blob_path(image_path, digest,
+    err = nsh_oci_digest_to_path(image_path, digest,
         config_file_path, sizeof(config_file_path));
     if (err) {
         fprintf(stderr, "[x] Failed to resolve config blob path by digest\n");
@@ -120,13 +121,13 @@ image_spec_schema_config_schema *nsh_load_oci_image_config(
     return config;
 }
 
-int nsh_load_oci_image(nsh_oci_image_t *image, const char *path)
+int nsh_oci_load_image(oci_image_t *image, const char *path)
 {
-    image->layout = nsh_load_oci_image_layout(path);
+    image->layout = nsh_oci_load_image_layout(path);
     if (image->layout == NULL)
         goto error;
 
-    image->index = nsh_load_oci_image_index(path);
+    image->index = nsh_oci_load_image_index(path);
     if (image->index == NULL)
         goto error_free_layout;
 
@@ -136,11 +137,11 @@ int nsh_load_oci_image(nsh_oci_image_t *image, const char *path)
     }
 
     // TODO: pick a suitable manifest instead of just the first
-    image->manifest = nsh_load_oci_image_manifest(path, image->index->manifests[0]->digest);
+    image->manifest = nsh_oci_load_image_manifest(path, image->index->manifests[0]->digest);
     if (image->manifest == NULL)
         goto error_free_index;
 
-    image->config = nsh_load_oci_image_config(path, image->manifest->config->digest);
+    image->config = nsh_oci_load_image_config(path, image->manifest->config->digest);
     if (image->config == NULL)
         goto error_free_manifest;
 
@@ -156,7 +157,7 @@ error:
     return -1;
 }
 
-void nsh_free_oci_image(nsh_oci_image_t *image)
+void nsh_oci_free_image(oci_image_t *image)
 {
     free_image_spec_schema_image_layout_schema(image->layout);
     free_image_spec_schema_image_index_schema(image->index);
