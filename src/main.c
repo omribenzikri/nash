@@ -8,6 +8,7 @@
 #include <sys/statfs.h>
 #include <linux/magic.h>
 #include "containers/containers.h"
+#include "images/oci.h"
 
 const struct option nsh_options[] = {
     { "cpu-time",    required_argument, NULL, 'c' },
@@ -110,6 +111,16 @@ int main(int argc, char **argv)
     char *envp[] = {NULL};
     bool system_compat;
     int err;
+
+    oci_image_t image;
+
+    err = nsh_oci_load_image(&image, "images/oci/alpine");
+    if (err) {
+        fprintf(stderr, "[x] Failed to load OCI image\n");
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
 
     err = nsh_parse_options(argc, argv, &config);
     if (err) {

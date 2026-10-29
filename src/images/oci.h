@@ -7,6 +7,9 @@
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
 #include <ocispec/image_spec_schema_config_schema.h>
 
+#define OCI_MEDIA_TYPE_MANIFEST "application/vnd.oci.image.manifest.v1+json"
+#define OCI_MEDIA_TYPE_CONFIG "application/vnd.oci.image.config.v1+json"
+
 typedef struct {
     image_spec_schema_image_layout_schema *layout;
     image_spec_schema_image_index_schema *index;
