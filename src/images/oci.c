@@ -110,15 +110,20 @@ image_spec_schema_image_layout_schema *nsh_oci_load_image_layout(const char *ima
     layout = image_spec_schema_image_layout_schema_parse_file(layout_file_path, NULL, &err);
     if (layout == NULL) {
         fprintf(stderr, "[x] Failed to parse image layout: %s\n", err);
-        return NULL;
+        goto error;
     }
 
     if (strcmp(layout->image_layout_version, NSH_OCI_SUPPORTED_IMAGE_LAYOUT_VERSION) != 0) {
         fprintf(stderr, "[x] Image contains an unsupported layout version\n");
-        return NULL;
+        goto error_free_layout;
     }
 
     return layout;
+
+error_free_layout:
+    free_image_spec_schema_image_layout_schema(layout);
+error:
+    return NULL;
 }
 
 image_spec_schema_image_index_schema *nsh_oci_load_image_index(const char *image_path)
@@ -150,21 +155,26 @@ image_spec_schema_image_manifest_schema *nsh_oci_load_image_manifest(
         manifest_file_path, sizeof(manifest_file_path));
     if (err) {
         fprintf(stderr, "[x] Failed to resolve manifest blob path by digest\n");
-        return NULL;
+        goto error;
     }
 
     manifest = image_spec_schema_image_manifest_schema_parse_file(manifest_file_path, NULL, &parser_err);
     if (manifest == NULL) {
         fprintf(stderr, "[x] Failed to parse image manifest: %s\n", parser_err);
-        return NULL;
+        goto error;
     }
 
     if (strcmp(manifest->config->media_type, OCI_MEDIA_TYPE_CONFIG)!= 0) {
         fprintf(stderr, "[x] Image config reference does not contain a valid media type\n");
-        return NULL;
+        goto error_free_manifest;
     }
 
     return manifest;
+
+error_free_manifest:
+    free_image_spec_schema_image_manifest_schema(manifest);
+error:
+    return NULL;
 }
 
 image_spec_schema_config_schema *nsh_oci_load_image_config(
