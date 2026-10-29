@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <string.h>
+#include <stddef.h>
+#include <stdbool.h>
 #include <linux/limits.h>
 #include <ocispec/json_common.h>
 #include <ocispec/image_spec_schema_image_layout_schema.h>
@@ -10,6 +12,68 @@
 #include "images/oci.h"
 
 #define NSH_OCI_SUPPORTED_IMAGE_LAYOUT_VERSION "1.0.0"
+
+static inline const char *nsh_oci_get_arch()
+{
+#if defined(__x86_64__) || defined(_M_X64)
+    return "amd64";
+#elif defined(__i386__) || defined(_M_IX86)
+    return "386";
+#elif defined(__aarch64__) || defined(_M_ARM64)
+    return "arm64";
+#elif defined(__arm__) || defined(_M_ARM)
+    return "arm";
+#elif defined(__riscv) && __riscv_xlen == 64
+    return "riscv64";
+#else
+    // No support for additional architectures
+    return NULL;
+#endif
+}
+
+static inline const char *nsh_oci_get_os()
+{
+#if defined(__linux__)
+    return "linux";
+#else
+    // No support for additional systems
+    return NULL;
+#endif
+}
+
+bool nsh_oci_is_compat_platform(
+    image_spec_schema_image_index_schema_manifests_platform *platform)
+{
+    const char *arch = nsh_oci_get_arch();
+    const char *os = nsh_oci_get_os();
+
+    if (arch == NULL || os == NULL)
+        return false;
+
+    return strcmp(platform->architecture, arch) == 0 &&
+           strcmp(platform->os, os) == 0;
+}
+
+image_spec_schema_image_index_schema_manifests_element *nsh_oci_find_compat_manifest(
+    image_spec_schema_image_index_schema *index)
+{
+    image_spec_schema_image_index_schema_manifests_element *element;
+
+    for (size_t i = 0; i < index->manifests_len; i++) {
+        element = index->manifests[i];
+
+        if (strcmp(element->media_type, OCI_MEDIA_TYPE_MANIFEST)!= 0)
+            continue;
+
+        // If no platform is specified, assume compatibility...
+        if (element->platform != NULL &&
+            !nsh_oci_is_compat_platform(element->platform)) continue;
+
+        return element;
+    }
+
+    return NULL;
+}
 
 int nsh_oci_digest_to_path(const char *image_path, const char *digest, char *buf, size_t size)
 {
@@ -139,16 +203,9 @@ int nsh_oci_load_image(oci_image_t *image, const char *path)
     if (image->index == NULL)
         goto error_free_layout;
 
-    if (image->index->manifests_len < 1) {
-        fprintf(stderr, "[x] Image index does not contain any manifests\n");
-        goto error_free_index;
-    }
-
-    // TODO: pick a suitable manifest instead of just the first
-    manifest_element = image->index->manifests[0];
-
-    if (strcmp(manifest_element->media_type, OCI_MEDIA_TYPE_MANIFEST)!= 0) {
-        fprintf(stderr, "[x] Image manifest reference does not contain a valid media type\n");
+    manifest_element = nsh_oci_find_compat_manifest(image->index);
+    if (manifest_element == NULL) {
+        fprintf(stderr, "[x] Failed to find a compatible image manifest in the index\n");
         goto error_free_index;
     }
 
