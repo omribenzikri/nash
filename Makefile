@@ -17,7 +17,7 @@ BUILD_SUBDIRS = $(patsubst $(SOURCE_DIR)/%, $(BUILD_DIR)/%/, $(SOURCE_SUBDIRS))
 all: nash
 
 nash: $(OBJECTS)
-	$(CC) -o $(TARGET) $^ $(LIBS)
+	$(CC) -o $(TARGET) $^ -Wl,-Bstatic $(STATIC_LIBS) -Wl,-Bdynamic $(DYNAMIC_LIBS)
 
 $(BUILD_DIR)/%.o: $(SOURCE_DIR)/%.c | $(BUILD_DIR)
 	$(CC) $(INCLUDE_DIRS) $(CFLAGS) -o $@ $<
