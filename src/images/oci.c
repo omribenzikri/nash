@@ -5,6 +5,7 @@
 #include <ocispec/image_spec_schema_image_layout_schema.h>
 #include <ocispec/image_spec_schema_image_index_schema.h>
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
+#include <ocispec/image_spec_schema_content_descriptor.h>
 #include <ocispec/image_spec_schema_config_schema.h>
 #include "images/oci.h"
 
@@ -94,6 +95,11 @@ image_spec_schema_image_manifest_schema *nsh_oci_load_image_manifest(
         return NULL;
     }
 
+    if (strcmp(manifest->config->media_type, OCI_MEDIA_TYPE_CONFIG)!= 0) {
+        fprintf(stderr, "[x] Image config reference does not contain a valid media type\n");
+        return NULL;
+    }
+
     return manifest;
 }
 
@@ -123,6 +129,8 @@ image_spec_schema_config_schema *nsh_oci_load_image_config(
 
 int nsh_oci_load_image(oci_image_t *image, const char *path)
 {
+    image_spec_schema_image_index_schema_manifests_element *manifest_element;
+
     image->layout = nsh_oci_load_image_layout(path);
     if (image->layout == NULL)
         goto error;
@@ -137,7 +145,14 @@ int nsh_oci_load_image(oci_image_t *image, const char *path)
     }
 
     // TODO: pick a suitable manifest instead of just the first
-    image->manifest = nsh_oci_load_image_manifest(path, image->index->manifests[0]->digest);
+    manifest_element = image->index->manifests[0];
+
+    if (strcmp(manifest_element->media_type, OCI_MEDIA_TYPE_MANIFEST)!= 0) {
+        fprintf(stderr, "[x] Image manifest reference does not contain a valid media type\n");
+        goto error_free_index;
+    }
+
+    image->manifest = nsh_oci_load_image_manifest(path, manifest_element->digest);
     if (image->manifest == NULL)
         goto error_free_index;
 
