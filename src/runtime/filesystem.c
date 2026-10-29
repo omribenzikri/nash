@@ -6,7 +6,7 @@
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <linux/limits.h>
-#include "containers/filesystem.h"
+#include "runtime/filesystem.h"
 
 int nsh_create_dev_mounts()
 {

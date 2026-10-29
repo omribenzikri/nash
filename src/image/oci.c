@@ -9,7 +9,7 @@
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
 #include <ocispec/image_spec_schema_content_descriptor.h>
 #include <ocispec/image_spec_schema_config_schema.h>
-#include "images/oci.h"
+#include "image/oci.h"
 
 #define NSH_OCI_SUPPORTED_IMAGE_LAYOUT_VERSION "1.0.0"
 

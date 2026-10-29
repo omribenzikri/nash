@@ -1,5 +1,5 @@
-#ifndef _NASH_IMAGES_OCI_H
-#define _NASH_IMAGES_OCI_H
+#ifndef _NASH_IMAGE_OCI_H
+#define _NASH_IMAGE_OCI_H
 
 #include <stddef.h>
 #include <ocispec/image_spec_schema_image_layout_schema.h>

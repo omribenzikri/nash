@@ -1,5 +1,5 @@
-#ifndef _NASH_CONTAINERS_FILESYSTEM_H
-#define _NASH_CONTAINERS_FILESYSTEM_H
+#ifndef _NASH_RUNTIME_FILESYSTEM_H
+#define _NASH_RUNTIME_FILESYSTEM_H
 
 int nsh_pivot_root(const char *root);
 int nsh_mount_essentials();

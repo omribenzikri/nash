@@ -11,10 +11,10 @@
 #include <sys/syscall.h>
 #include <linux/sched.h>
 #include <uuid/uuid.h>
-#include "containers/filesystem.h"
-#include "containers/resources.h"
-#include "containers/capabilities.h"
-#include "containers/containers.h"
+#include "runtime/filesystem.h"
+#include "runtime/resources.h"
+#include "runtime/capabilities.h"
+#include "runtime/runtime.h"
 
 void nsh_container_startup(nsh_container_config_t *config)
 {
