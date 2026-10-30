@@ -5,6 +5,7 @@
 
 int nsh_image_layers_extract(
     image_spec_schema_image_manifest_schema *manifest,
+    const char *image_path,
     int workdir_fd);
 
 #endif

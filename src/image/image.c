@@ -99,7 +99,7 @@ int nsh_image_rootfs_prepare(
         goto out_close_workdir;
     }
 
-    err = nsh_image_layers_extract(image->oci.manifest, workdir_fd);
+    err = nsh_image_layers_extract(image->oci.manifest, image->path, workdir_fd);
     if (err) {
         ret = -1;
         goto out_close_workdir;
