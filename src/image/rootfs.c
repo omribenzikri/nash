@@ -4,19 +4,80 @@
 #include <sys/stat.h>
 #include <linux/limits.h>
 #include <archive.h>
+#include <archive_entry.h>
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
 #include <ocispec/image_spec_schema_content_descriptor.h>
 #include "common/constants.h"
+#include "utils/filesystem.h"
 #include "image/oci.h"
 #include "image/rootfs.h"
 
 #define NSH_LAYER_EXTRACTION_BLOCK_SIZE 10240
 
-static int nsh_image_layer_extract_archive(const char *layer_path)
+static int nsh_layer_digest_to_snapshot_path(
+    int snapshots_dir_fd, const char *digest, char *path, size_t size)
+{
+    int snapshot_fd;
+    int err;
+
+    snapshot_fd = openat(snapshots_dir_fd, digest, O_RDONLY | O_DIRECTORY);
+    if (snapshot_fd == -1) {
+        perror("[x] Failed to open snapshot directory");
+        return -1;
+    }
+
+    err = fd_to_pathname(snapshot_fd, path, size);
+    if (err) {
+        perror("[x] Failed to convert file descriptor to pathname");
+        return -1;
+    }
+
+    return 0;
+}
+
+static void nsh_layer_archive_entry_set_dest(
+    struct archive_entry *entry, const char *snapshot_path)
+{
+    const char *pathname;
+    char dest[PATH_MAX];
+
+    pathname = archive_entry_pathname(entry);
+    snprintf(dest, sizeof(dest), "%s/%s", snapshot_path, pathname);
+    archive_entry_set_pathname(entry, dest);
+}
+
+static int nsh_layer_extract_archive_entries(
+    struct archive *reader, struct archive *writer, const char *snapshot_path)
+{
+    struct archive_entry *entry;
+    int retcode;
+
+    while ((retcode = archive_read_next_header(reader, &entry)) == ARCHIVE_OK) {
+        nsh_layer_archive_entry_set_dest(entry, snapshot_path);
+
+        retcode = archive_read_data_skip(reader);
+        if (retcode != ARCHIVE_OK) {
+            fprintf(stderr, "[x] Failed to skip entry in layer archive: %s\n",
+                    archive_error_string(writer));
+            return -1;
+        }
+    }
+
+    if (retcode != ARCHIVE_EOF) {
+        fprintf(stderr, "[x] Failed to read header of layer archive: %s\n",
+                archive_error_string(reader));
+        return -1;
+    }
+
+    return 0;
+}
+
+static int nsh_layer_extract_archive(const char *layer_path, const char *snapshot_path)
 {
     struct archive *reader;
     struct archive *writer;
     int retcode;
+    int err;
     int ret = 0;
 
     reader = archive_read_new();
@@ -44,32 +105,46 @@ static int nsh_image_layer_extract_archive(const char *layer_path)
         goto out;
     }
 
+    err = nsh_layer_extract_archive_entries(reader, writer, snapshot_path);
+    if (err) {
+        ret = -1;
+        goto out;
+    }
+
 out:
     archive_write_free(writer);
     archive_read_free(reader);
     return ret;
 }
 
-static int nsh_image_layer_extract_single(const char *image_path, int layers_dir_fd,
+static int nsh_layer_extract_single(const char *image_path, int snapshots_dir_fd,
     image_spec_schema_content_descriptor *layer_descriptor)
 {
     char layer_path[PATH_MAX];
+    char snapshot_path[PATH_MAX];
     int err;
 
+    err = mkdirat(snapshots_dir_fd, layer_descriptor->digest, S_IRWXU);
+    if (err) {
+        perror("[x] Failed to create snapshot directory");
+        return -1;
+    }
+
     err = nsh_oci_digest_to_path(image_path, layer_descriptor->digest,
-        layer_path, sizeof(layer_path));
+                                 layer_path, sizeof(layer_path));
     if (err) {
         fprintf(stderr, "[x] Failed to resolve layer blob path by digest\n");
         return -1;
     }
 
-    err = mkdirat(layers_dir_fd, layer_descriptor->digest, S_IRWXU);
+    err = nsh_layer_digest_to_snapshot_path(snapshots_dir_fd, layer_descriptor->digest,
+                                            snapshot_path, sizeof(snapshot_path));
     if (err) {
-        perror("[x] Failed to create layer directory");
+        fprintf(stderr, "[x] Failed to resolve snapshot path by digest\n");
         return -1;
     }
 
-    err = nsh_image_layer_extract_archive(layer_path);
+    err = nsh_layer_extract_archive(layer_path, snapshot_path);
     if (err)
         return -1;
 
@@ -82,15 +157,15 @@ int nsh_image_layers_extract(
     int workdir_fd)
 {
     image_spec_schema_content_descriptor *layer_descriptor;
-    int layers_dir_fd;
+    int snapshots_dir_fd;
     int ret = 0;
     int err;
 
-    layers_dir_fd = openat(workdir_fd,
-        NSH_FS_WORKDIR_OVERLAY_LAYERS, O_RDONLY | O_DIRECTORY);
+    snapshots_dir_fd = openat(workdir_fd,
+        NSH_FS_WORKDIR_OVERLAY_SNAPSHOTS, O_RDONLY | O_DIRECTORY);
 
-    if (layers_dir_fd == -1) {
-        perror("[x] Failed to open layers directory");
+    if (snapshots_dir_fd == -1) {
+        perror("[x] Failed to open snapshots directory");
         ret = -1;
         goto out;
     }
@@ -98,19 +173,19 @@ int nsh_image_layers_extract(
     for (size_t i = 0; i < manifest->layers_len; i++) {
         layer_descriptor = manifest->layers[i];
 
-        err = nsh_image_layer_extract_single(
-            image_path, layers_dir_fd, layer_descriptor);
+        err = nsh_layer_extract_single(
+            image_path, snapshots_dir_fd, layer_descriptor);
 
         if (err) {
             ret = -1;
-            goto out_close_layers_dir;
+            goto out_close_snapshots_dir;
         }
     }
 
-out_close_layers_dir:
-    err = close(layers_dir_fd);
+out_close_snapshots_dir:
+    err = close(snapshots_dir_fd);
     if (err) {
-        perror("[x] Failed to close layers directory");
+        perror("[x] Failed to close snapshots directory");
         ret = -1;
     }
 out:

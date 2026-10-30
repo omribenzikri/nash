@@ -58,7 +58,7 @@ static int nsh_filesystem_workspace_create(int workdir_fd)
      const char *subdirs[] = {
         NSH_FS_WORKDIR,
         NSH_FS_WORKDIR_OVERLAY,
-        NSH_FS_WORKDIR_OVERLAY_LAYERS,
+        NSH_FS_WORKDIR_OVERLAY_SNAPSHOTS,
         NSH_FS_WORKDIR_OVERLAY_UPPER,
         NSH_FS_WORKDIR_OVERLAY_WORKDIR,
         NSH_FS_WORKDIR_ROOTFS
