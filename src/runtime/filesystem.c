@@ -139,7 +139,7 @@ static int nsh_create_dev_symlinks()
     return 0;
 }
 
-int nsh_populate_dev()
+int nsh_fs_populate_dev()
 {
     int err;
 
@@ -158,7 +158,7 @@ int nsh_populate_dev()
     return 0;
 }
 
-int nsh_mount_essentials()
+int nsh_fs_mount_essentials()
 {
     int err;
 
@@ -189,7 +189,7 @@ int nsh_mount_essentials()
     return 0;
 }
 
-int nsh_pivot_root(const char *root)
+int nsh_fs_pivot_root(const char *root)
 {
     const char *old_root_rel = "/old-rootfs";
     char old_root_abs[PATH_MAX];

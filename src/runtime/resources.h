@@ -11,7 +11,7 @@ typedef struct {
     uint64_t memory_swap_bytes;
 } nsh_resources_t;
 
-int nsh_create_cgroup(uuid_t container_id, nsh_resources_t *resources);
-int nsh_delete_cgroup(uuid_t container_id);
+int nsh_cgroup_create(uuid_t container_id, nsh_resources_t *resources);
+int nsh_cgroup_delete(uuid_t container_id);
 
 #endif

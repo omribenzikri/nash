@@ -28,19 +28,19 @@ static void nsh_container_startup(nsh_runtime_config_t *config)
 
     umask(0);
 
-    err = nsh_pivot_root(config->rootfs_path);
+    err = nsh_fs_pivot_root(config->rootfs_path);
     if (err)
         exit(EXIT_FAILURE);
 
-    err = nsh_mount_essentials();
+    err = nsh_fs_mount_essentials();
     if (err)
         exit(EXIT_FAILURE);
 
-    err = nsh_populate_dev();
+    err = nsh_fs_populate_dev();
     if (err)
         exit(EXIT_FAILURE);
 
-    err = nsh_drop_capabilities();
+    err = nsh_cap_drop();
     if (err)
         exit(EXIT_FAILURE);
 
@@ -50,7 +50,7 @@ static void nsh_container_startup(nsh_runtime_config_t *config)
     exit(EXIT_FAILURE);
 }
 
-static pid_t nsh_clone_container(nsh_runtime_config_t *config, int cgroup_fd)
+static pid_t nsh_container_clone(nsh_runtime_config_t *config, int cgroup_fd)
 {
     pid_t pid;
 
@@ -82,13 +82,13 @@ pid_t nsh_runtime_container_create(uuid_t id, nsh_runtime_config_t *config)
     int cgroup_fd;
     int err;
 
-    cgroup_fd = nsh_create_cgroup(id, &config->resources);
+    cgroup_fd = nsh_cgroup_create(id, &config->resources);
     if (cgroup_fd == -1)
         goto error;
 
     printf("[+] Successfully created container cgroup\n");
 
-    pid = nsh_clone_container(config, cgroup_fd);
+    pid = nsh_container_clone(config, cgroup_fd);
     err = close(cgroup_fd);
 
     if (err)
@@ -101,12 +101,12 @@ pid_t nsh_runtime_container_create(uuid_t id, nsh_runtime_config_t *config)
     return 0;
 
 error_del_cgroup:
-    nsh_delete_cgroup(id);
+    nsh_cgroup_delete(id);
 error:
     return -1;
 }
 
 void nsh_runtime_container_cleanup(uuid_t id)
 {
-    nsh_delete_cgroup(id);
+    nsh_cgroup_delete(id);
 }

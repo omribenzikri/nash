@@ -130,7 +130,7 @@ static int nsh_set_no_new_privs()
     return 0;
 }
 
-int nsh_drop_capabilities()
+int nsh_cap_drop()
 {
     return nsh_set_no_new_privs()          ||
            nsh_cap_bounding_set_restrict() ||

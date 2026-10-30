@@ -201,7 +201,7 @@ static image_spec_schema_config_schema *nsh_oci_load_image_config(
     return config;
 }
 
-int nsh_oci_load_image(oci_image_t *image, const char *path)
+int nsh_oci_image_load(oci_image_t *image, const char *path)
 {
     image_spec_schema_image_index_schema_manifests_element *manifest_element;
 
@@ -239,7 +239,7 @@ error:
     return -1;
 }
 
-void nsh_oci_free_image(oci_image_t *image)
+void nsh_oci_image_free(oci_image_t *image)
 {
     free_image_spec_schema_image_layout_schema(image->layout);
     free_image_spec_schema_image_index_schema(image->index);

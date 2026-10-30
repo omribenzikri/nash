@@ -102,7 +102,7 @@ static void nsh_resolve_cgroup_path(uuid_t container_id, char *buf, size_t size)
     snprintf(buf, size, "/sys/fs/cgroup/system.slice/nash-%s.scope", uuid_string);
 }
 
-int nsh_create_cgroup(uuid_t container_id, nsh_resources_t *resources)
+int nsh_cgroup_create(uuid_t container_id, nsh_resources_t *resources)
 {
     char path[PATH_MAX];
     int fd;
@@ -129,12 +129,12 @@ int nsh_create_cgroup(uuid_t container_id, nsh_resources_t *resources)
     return fd;
 
 error_del_cgroup:
-    nsh_delete_cgroup(container_id);
+    nsh_cgroup_delete(container_id);
 error:
     return -1;
 }
 
-int nsh_delete_cgroup(uuid_t container_id)
+int nsh_cgroup_delete(uuid_t container_id)
 {
     char path[PATH_MAX];
     int err;
