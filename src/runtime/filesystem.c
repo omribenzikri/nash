@@ -8,7 +8,7 @@
 #include <linux/limits.h>
 #include "runtime/filesystem.h"
 
-int nsh_create_dev_mounts()
+static int nsh_create_dev_mounts()
 {
     int err;
 
@@ -51,7 +51,7 @@ int nsh_create_dev_mounts()
     return 0;
 }
 
-int nsh_create_dev_nodes()
+static int nsh_create_dev_nodes()
 {
     const mode_t mode = S_IFCHR | S_IRUSR | S_IWUSR |
                         S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
@@ -96,7 +96,7 @@ int nsh_create_dev_nodes()
     return 0;
 }
 
-int nsh_create_dev_symlinks()
+static int nsh_create_dev_symlinks()
 {
     int err;
 

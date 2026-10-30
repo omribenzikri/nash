@@ -12,7 +12,7 @@
 
 #define NSH_CGROUP_PAYLOAD_SIZE 128
 
-int nsh_write_to_cgroup_file(int cgroup_fd, const char *name, const char *payload)
+static int nsh_write_to_cgroup_file(int cgroup_fd, const char *name, const char *payload)
 {
     char log[128];
     int fd;
@@ -35,7 +35,7 @@ int nsh_write_to_cgroup_file(int cgroup_fd, const char *name, const char *payloa
     return 0;
 }
 
-void nsh_format_cpu_max_payload(char *buf, size_t size, float value)
+static void nsh_format_cpu_max_payload(char *buf, size_t size, float value)
 {
     const int duration_us = 100000;
     int max_us;
@@ -46,7 +46,7 @@ void nsh_format_cpu_max_payload(char *buf, size_t size, float value)
     snprintf(buf, size, "%d %d", max_us, duration_us);
 }
 
-int nsh_apply_resource_limits(int cgroup_fd, nsh_resources_t *resources)
+static int nsh_apply_resource_limits(int cgroup_fd, nsh_resources_t *resources)
 {
     int err;
     char payload[NSH_CGROUP_PAYLOAD_SIZE];
@@ -94,7 +94,7 @@ int nsh_apply_resource_limits(int cgroup_fd, nsh_resources_t *resources)
     return 0;
 }
 
-void nsh_resolve_cgroup_path(uuid_t container_id, char *buf, size_t size)
+static void nsh_resolve_cgroup_path(uuid_t container_id, char *buf, size_t size)
 {
     char uuid_string[UUID_STR_LEN];
 

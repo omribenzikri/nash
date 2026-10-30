@@ -16,7 +16,7 @@
 #include "runtime/capabilities.h"
 #include "runtime/runtime.h"
 
-void nsh_container_startup(nsh_runtime_config_t *config)
+static void nsh_container_startup(nsh_runtime_config_t *config)
 {
     int err;
 
@@ -50,7 +50,7 @@ void nsh_container_startup(nsh_runtime_config_t *config)
     exit(EXIT_FAILURE);
 }
 
-pid_t nsh_clone_container(nsh_runtime_config_t *config, int cgroup_fd)
+static pid_t nsh_clone_container(nsh_runtime_config_t *config, int cgroup_fd)
 {
     pid_t pid;
 

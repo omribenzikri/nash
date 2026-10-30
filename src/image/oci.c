@@ -41,7 +41,7 @@ static inline const char *nsh_oci_get_os()
 #endif
 }
 
-bool nsh_oci_is_compat_platform(
+static bool nsh_oci_is_compat_platform(
     image_spec_schema_image_index_schema_manifests_platform *platform)
 {
     const char *arch = nsh_oci_get_arch();
@@ -54,7 +54,7 @@ bool nsh_oci_is_compat_platform(
            strcmp(platform->os, os) == 0;
 }
 
-image_spec_schema_image_index_schema_manifests_element *nsh_oci_find_compat_manifest(
+static image_spec_schema_image_index_schema_manifests_element *nsh_oci_find_compat_manifest(
     image_spec_schema_image_index_schema *index)
 {
     image_spec_schema_image_index_schema_manifests_element *element;
@@ -99,7 +99,7 @@ int nsh_oci_digest_to_path(const char *image_path, const char *digest, char *buf
     return 0;
 }
 
-image_spec_schema_image_layout_schema *nsh_oci_load_image_layout(const char *image_path)
+static image_spec_schema_image_layout_schema *nsh_oci_load_image_layout(const char *image_path)
 {
     char layout_file_path[PATH_MAX];
     image_spec_schema_image_layout_schema *layout;
@@ -126,7 +126,7 @@ error:
     return NULL;
 }
 
-image_spec_schema_image_index_schema *nsh_oci_load_image_index(const char *image_path)
+static image_spec_schema_image_index_schema *nsh_oci_load_image_index(const char *image_path)
 {
     char index_file_path[PATH_MAX];
     image_spec_schema_image_index_schema *index;
@@ -143,7 +143,7 @@ image_spec_schema_image_index_schema *nsh_oci_load_image_index(const char *image
     return index;
 }
 
-image_spec_schema_image_manifest_schema *nsh_oci_load_image_manifest(
+static image_spec_schema_image_manifest_schema *nsh_oci_load_image_manifest(
     const char *image_path, const char *digest)
 {
     char manifest_file_path[PATH_MAX];
@@ -177,7 +177,7 @@ error:
     return NULL;
 }
 
-image_spec_schema_config_schema *nsh_oci_load_image_config(
+static image_spec_schema_config_schema *nsh_oci_load_image_config(
     const char *image_path, const char *digest)
 {
     char config_file_path[PATH_MAX];

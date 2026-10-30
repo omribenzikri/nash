@@ -3,5 +3,7 @@ CompileFlags:
       "-xc",
       "-Wall",
       "-Wextra",
-      "-Werror"
+      "-Werror",
+      "-Wmissing-prototypes",
+      "-I/home/omri/nash/src"
     ]

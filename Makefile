@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -c -Wall -Wextra -Werror
+CFLAGS = -c -Wall -Wextra -Werror -Wmissing-prototypes
 STATIC_LIBS = -locispec -lblake3
 DYNAMIC_LIBS = -luuid -lcap -ljson-c -lsodium
 INCLUDE_DIRS = -Isrc

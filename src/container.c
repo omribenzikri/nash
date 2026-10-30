@@ -11,7 +11,7 @@
 
 #define NSH_GEN_HOSTNAME_LEN 13
 
-char *nsh_generate_hostname(uuid_t container_id)
+static char *nsh_generate_hostname(uuid_t container_id)
 {
     char uuid_string[UUID_STR_LEN];
     char *hostname = uuid_string + sizeof(uuid_string)
@@ -23,7 +23,7 @@ char *nsh_generate_hostname(uuid_t container_id)
     return strndup(hostname, NSH_GEN_HOSTNAME_LEN);
 }
 
-int nsh_runtime_config_init(nsh_runtime_config_t *runtime_config,
+static int nsh_runtime_config_init(nsh_runtime_config_t *runtime_config,
                             nsh_container_config_t *user_config,
                             uuid_t container_id)
 {
@@ -45,12 +45,12 @@ int nsh_runtime_config_init(nsh_runtime_config_t *runtime_config,
     return 0;
 }
 
-void nsh_runtime_config_destroy(nsh_runtime_config_t *config)
+static void nsh_runtime_config_destroy(nsh_runtime_config_t *config)
 {
     free(config->hostname);
 }
 
-int nsh_container_create_internal(uuid_t id,
+static int nsh_container_create_internal(uuid_t id,
     nsh_container_config_t *user_config, nsh_container_t *out)
 {
     nsh_runtime_config_t runtime_config;
