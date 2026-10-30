@@ -5,9 +5,8 @@
 #include <getopt.h>
 #include <inttypes.h>
 #include <sys/wait.h>
-#include <sys/statfs.h>
-#include <linux/magic.h>
 #include "container.h"
+#include "startup.h"
 
 static const struct option nsh_options[] = {
     { "cpu-time",    required_argument, NULL, 'c' },
@@ -16,34 +15,6 @@ static const struct option nsh_options[] = {
     { "memory-swap", required_argument, NULL, 's' },
     { NULL,          0,                 NULL,  0  }
 };
-
-static int nsh_verify_cgroup_version(bool *compat)
-{
-    struct statfs st;
-    int err;
-
-    err = statfs("/sys/fs/cgroup", &st);
-    if (err) {
-        perror("[x] Failed to fetch cgroup filesystem type");
-        return -1;
-    }
-    *compat = st.f_type == CGROUP2_SUPER_MAGIC;
-
-    return 0;
-}
-
-static int nsh_verify_system(bool *compat)
-{
-    int err;
-
-    err = nsh_verify_cgroup_version(compat);
-    if (err)
-        return -1;
-    if (!*compat)
-        fprintf(stderr, "[x] Unsupported cgroup version detected\n");
-
-    return 0;
-}
 
 static int nsh_parse_uint(const char *str, uintmax_t max, uintmax_t *result)
 {
@@ -127,7 +98,7 @@ int main(int argc, char **argv)
     config.exec_argv = argv + optind + 1;
     config.exec_envp = envp;
 
-    err = nsh_verify_system(&system_compat);
+    err = nsh_verify_system_comapt(&system_compat);
     if (err | !system_compat) {
         fprintf(stderr, "[x] Failed to verify system compatibility, exiting\n");
         return EXIT_FAILURE;
