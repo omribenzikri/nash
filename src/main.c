@@ -99,10 +99,14 @@ int main(int argc, char **argv)
     config.exec_envp = envp;
 
     err = nsh_verify_system_comapt(&system_compat);
-    if (err | !system_compat) {
+    if (err || !system_compat) {
         fprintf(stderr, "[x] Failed to verify system compatibility, exiting\n");
         return EXIT_FAILURE;
     }
+
+    err = nsh_startup();
+    if (err)
+        return EXIT_FAILURE;
 
     err = nsh_container_create(&config, &container);
     if (err) {

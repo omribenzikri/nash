@@ -4,5 +4,6 @@
 #include <stdbool.h>
 
 int nsh_verify_system_comapt(bool *out);
+int nsh_startup(void);
 
 #endif
