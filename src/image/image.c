@@ -5,15 +5,10 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <linux/limits.h>
+#include "common/constants.h"
 #include "image/oci.h"
+#include "image/rootfs.h"
 #include "image/image.h"
-
-#define NSH_FS_WORKDIR "filesystem"
-#define NSH_FS_WORKDIR_OVERLAY NSH_FS_WORKDIR "/overlay"
-#define NSH_FS_WORKDIR_OVERLAY_LAYERS NSH_FS_WORKDIR_OVERLAY "/layers"
-#define NSH_FS_WORKDIR_OVERLAY_UPPER NSH_FS_WORKDIR_OVERLAY "/upper"
-#define NSH_FS_WORKDIR_OVERLAY_WORKDIR NSH_FS_WORKDIR_OVERLAY "/workdir"
-#define NSH_FS_WORKDIR_ROOTFS NSH_FS_WORKDIR "/rootfs"
 
 struct nsh_image {
     char *path;
@@ -104,7 +99,12 @@ int nsh_image_rootfs_prepare(
         goto out_close_workdir;
     }
 
-    (void)image;
+    err = nsh_image_layers_extract(image->oci.manifest, workdir_fd);
+    if (err) {
+        ret = -1;
+        goto out_close_workdir;
+    }
+
     (void)path;
     (void)size;
 
