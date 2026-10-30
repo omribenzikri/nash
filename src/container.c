@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <linux/limits.h>
 #include <uuid/uuid.h>
+#include "image/image.h"
 #include "runtime/runtime.h"
 #include "common/constants.h"
 #include "utils/filesystem.h"
@@ -92,6 +93,46 @@ static void nsh_runtime_config_destroy(nsh_runtime_config_t *config)
     free(config->hostname);
 }
 
+static int nsh_container_init_rootfs(nsh_container_t *container, nsh_image_t *image)
+{
+    int err;
+    char rootfs_path[PATH_MAX];
+
+    err = nsh_image_rootfs_prepare(image, container->workdir_path,
+                                   rootfs_path, sizeof(rootfs_path));
+    if (err) {
+        fprintf(stderr, "[x] Failed to prepare container rootfs\n");
+        return -1;
+    }
+
+    return 0;
+}
+
+static int nsh_container_init_image_related(nsh_container_t *container, const char *image_path)
+{
+    nsh_image_t *image;
+    int ret = 0;
+    int err;
+
+    image = nsh_image_load(image_path);
+    if (image == NULL) {
+        fprintf(stderr, "[x] Failed to load image\n");
+        ret = -1;
+        goto out;
+    }
+
+    err = nsh_container_init_rootfs(container, image);
+    if (err) {
+        ret = -1;
+        goto out_free_image;
+    }
+
+out_free_image:
+    nsh_image_free(image);
+out:
+    return ret;
+}
+
 static int nsh_container_init(nsh_container_t *container,
     nsh_container_config_t *user_config)
 {
@@ -105,8 +146,15 @@ static int nsh_container_init(nsh_container_t *container,
     if (err)
         goto error_delete_workspace;
 
+    // Temporary image location
+    err = nsh_container_init_image_related(container, "images/oci/alpine");
+    if (err)
+        goto error_free_config;
+
     return 0;
 
+error_free_config:
+    nsh_runtime_config_destroy(&container->runtime_config);
 error_delete_workspace:
     nsh_container_workspace_delete(container);
 error:
@@ -123,6 +171,7 @@ int nsh_container_create(nsh_container_config_t *config, nsh_container_t *out)
 {
     int err;
 
+    memset(out, 0, sizeof(*out));
     uuid_generate_random(out->id);
 
     err = nsh_container_init(out, config);
