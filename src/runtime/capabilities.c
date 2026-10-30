@@ -4,9 +4,9 @@
 #include <sys/prctl.h>
 #include <linux/capability.h>
 #include <linux/prctl.h>
-#include "containers/capabilities.h"
+#include "runtime/capabilities.h"
 
-const cap_value_t nsh_allowed_caps[] = {
+static const cap_value_t nsh_allowed_caps[] = {
     CAP_DAC_OVERRIDE,
     CAP_CHOWN,
     CAP_FOWNER,
@@ -21,10 +21,10 @@ const cap_value_t nsh_allowed_caps[] = {
     CAP_KILL,
 };
 
-const size_t nsh_allowed_caps_count =
+static const size_t nsh_allowed_caps_count =
     sizeof(nsh_allowed_caps) / sizeof(nsh_allowed_caps[0]);
 
-int nsh_cap_is_allowed(cap_value_t cap)
+static int nsh_cap_is_allowed(cap_value_t cap)
 {
     for (size_t i = 0; i < nsh_allowed_caps_count; i++) {
         if (nsh_allowed_caps[i] == cap)
@@ -34,7 +34,7 @@ int nsh_cap_is_allowed(cap_value_t cap)
     return false;
 }
 
-int nsh_cap_populate_set(cap_t caps, cap_flag_t set)
+static int nsh_cap_populate_set(cap_t caps, cap_flag_t set)
 {
     int err;
 
@@ -48,7 +48,7 @@ int nsh_cap_populate_set(cap_t caps, cap_flag_t set)
     return 0;
 }
 
-int nsh_cap_standard_sets_restrict()
+static int nsh_cap_standard_sets_restrict()
 {
     cap_t caps;
     int ret = 0;
@@ -86,7 +86,7 @@ out:
     return ret;
 }
 
-int nsh_cap_bounding_set_restrict()
+static int nsh_cap_bounding_set_restrict()
 {
     int err;
 
@@ -104,7 +104,7 @@ int nsh_cap_bounding_set_restrict()
     return 0;
 }
 
-int nsh_cap_ambient_set_clear()
+static int nsh_cap_ambient_set_clear()
 {
     int err;
 
@@ -117,7 +117,7 @@ int nsh_cap_ambient_set_clear()
     return 0;
 }
 
-int nsh_set_no_new_privs()
+static int nsh_set_no_new_privs()
 {
     int err;
 
@@ -130,7 +130,7 @@ int nsh_set_no_new_privs()
     return 0;
 }
 
-int nsh_drop_capabilities()
+int nsh_cap_drop()
 {
     return nsh_set_no_new_privs()          ||
            nsh_cap_bounding_set_restrict() ||

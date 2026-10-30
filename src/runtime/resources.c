@@ -8,11 +8,11 @@
 #include <sys/stat.h>
 #include <linux/limits.h>
 #include <uuid/uuid.h>
-#include "containers/resources.h"
+#include "runtime/resources.h"
 
 #define NSH_CGROUP_PAYLOAD_SIZE 128
 
-int nsh_write_to_cgroup_file(int cgroup_fd, const char *name, const char *payload)
+static int nsh_write_to_cgroup_file(int cgroup_fd, const char *name, const char *payload)
 {
     char log[128];
     int fd;
@@ -35,7 +35,7 @@ int nsh_write_to_cgroup_file(int cgroup_fd, const char *name, const char *payloa
     return 0;
 }
 
-void nsh_format_cpu_max_payload(char *buf, size_t size, float value)
+static void nsh_format_cpu_max_payload(char *buf, size_t size, float value)
 {
     const int duration_us = 100000;
     int max_us;
@@ -46,7 +46,7 @@ void nsh_format_cpu_max_payload(char *buf, size_t size, float value)
     snprintf(buf, size, "%d %d", max_us, duration_us);
 }
 
-int nsh_apply_resource_limits(int cgroup_fd, nsh_resources_t *resources)
+static int nsh_apply_resource_limits(int cgroup_fd, nsh_resources_t *resources)
 {
     int err;
     char payload[NSH_CGROUP_PAYLOAD_SIZE];
@@ -94,7 +94,7 @@ int nsh_apply_resource_limits(int cgroup_fd, nsh_resources_t *resources)
     return 0;
 }
 
-void nsh_resolve_cgroup_path(uuid_t container_id, char *buf, size_t size)
+static void nsh_resolve_cgroup_path(uuid_t container_id, char *buf, size_t size)
 {
     char uuid_string[UUID_STR_LEN];
 
@@ -102,7 +102,7 @@ void nsh_resolve_cgroup_path(uuid_t container_id, char *buf, size_t size)
     snprintf(buf, size, "/sys/fs/cgroup/system.slice/nash-%s.scope", uuid_string);
 }
 
-int nsh_create_cgroup(uuid_t container_id, nsh_resources_t *resources)
+int nsh_cgroup_create(uuid_t container_id, nsh_resources_t *resources)
 {
     char path[PATH_MAX];
     int fd;
@@ -129,12 +129,12 @@ int nsh_create_cgroup(uuid_t container_id, nsh_resources_t *resources)
     return fd;
 
 error_del_cgroup:
-    nsh_delete_cgroup(container_id);
+    nsh_cgroup_delete(container_id);
 error:
     return -1;
 }
 
-int nsh_delete_cgroup(uuid_t container_id)
+int nsh_cgroup_delete(uuid_t container_id)
 {
     char path[PATH_MAX];
     int err;

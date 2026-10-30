@@ -6,9 +6,9 @@
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <linux/limits.h>
-#include "containers/filesystem.h"
+#include "runtime/filesystem.h"
 
-int nsh_create_dev_mounts()
+static int nsh_create_dev_mounts()
 {
     int err;
 
@@ -51,7 +51,7 @@ int nsh_create_dev_mounts()
     return 0;
 }
 
-int nsh_create_dev_nodes()
+static int nsh_create_dev_nodes()
 {
     const mode_t mode = S_IFCHR | S_IRUSR | S_IWUSR |
                         S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
@@ -96,7 +96,7 @@ int nsh_create_dev_nodes()
     return 0;
 }
 
-int nsh_create_dev_symlinks()
+static int nsh_create_dev_symlinks()
 {
     int err;
 
@@ -139,7 +139,7 @@ int nsh_create_dev_symlinks()
     return 0;
 }
 
-int nsh_populate_dev()
+int nsh_fs_populate_dev()
 {
     int err;
 
@@ -158,7 +158,7 @@ int nsh_populate_dev()
     return 0;
 }
 
-int nsh_mount_essentials()
+int nsh_fs_mount_essentials()
 {
     int err;
 
@@ -189,7 +189,7 @@ int nsh_mount_essentials()
     return 0;
 }
 
-int nsh_pivot_root(const char *root)
+int nsh_fs_pivot_root(const char *root)
 {
     const char *old_root_rel = "/old-rootfs";
     char old_root_abs[PATH_MAX];

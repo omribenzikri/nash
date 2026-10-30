@@ -7,10 +7,9 @@
 #include <sys/wait.h>
 #include <sys/statfs.h>
 #include <linux/magic.h>
-#include "containers/containers.h"
-#include "images/oci.h"
+#include "container.h"
 
-const struct option nsh_options[] = {
+static const struct option nsh_options[] = {
     { "cpu-time",    required_argument, NULL, 'c' },
     { "procs",       required_argument, NULL, 'p' },
     { "memory",      required_argument, NULL, 'm' },
@@ -18,7 +17,7 @@ const struct option nsh_options[] = {
     { NULL,          0,                 NULL,  0  }
 };
 
-int nsh_verify_cgroup_version(bool *compat)
+static int nsh_verify_cgroup_version(bool *compat)
 {
     struct statfs st;
     int err;
@@ -33,7 +32,7 @@ int nsh_verify_cgroup_version(bool *compat)
     return 0;
 }
 
-int nsh_verify_system(bool *compat)
+static int nsh_verify_system(bool *compat)
 {
     int err;
 
@@ -46,7 +45,7 @@ int nsh_verify_system(bool *compat)
     return 0;
 }
 
-int nsh_parse_uint(const char *str, uintmax_t max, uintmax_t *result)
+static int nsh_parse_uint(const char *str, uintmax_t max, uintmax_t *result)
 {
     char *end;
     uintmax_t value;
@@ -64,7 +63,7 @@ int nsh_parse_uint(const char *str, uintmax_t max, uintmax_t *result)
     return 0;
 }
 
-int nsh_parse_options(int argc, char **argv, nsh_container_config_t *config)
+static int nsh_parse_options(int argc, char **argv, nsh_container_config_t *config)
 {
     int opt;
     int err;
@@ -112,16 +111,6 @@ int main(int argc, char **argv)
     bool system_compat;
     int err;
 
-    oci_image_t image;
-
-    err = nsh_oci_load_image(&image, "images/oci/alpine");
-    if (err) {
-        fprintf(stderr, "[x] Failed to load OCI image\n");
-        return EXIT_FAILURE;
-    }
-
-    return EXIT_SUCCESS;
-
     err = nsh_parse_options(argc, argv, &config);
     if (err) {
         fprintf(stderr, "Error: invalid arguments supplied\n");
@@ -144,7 +133,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    err = nsh_create_container(&config, &container);
+    err = nsh_container_create(&config, &container);
     if (err) {
         fprintf(stderr, "[x] Failed to create container, exiting\n");
         return EXIT_FAILURE;
@@ -155,7 +144,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    nsh_cleanup_container_resources(&container);
+    nsh_container_delete(&container);
 
     return EXIT_SUCCESS;
 }

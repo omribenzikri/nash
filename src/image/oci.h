@@ -1,5 +1,5 @@
-#ifndef _NASH_IMAGES_OCI_H
-#define _NASH_IMAGES_OCI_H
+#ifndef _NASH_IMAGE_OCI_H
+#define _NASH_IMAGE_OCI_H
 
 #include <stddef.h>
 #include <ocispec/image_spec_schema_image_layout_schema.h>
@@ -17,8 +17,8 @@ typedef struct {
     image_spec_schema_config_schema *config;
 } oci_image_t;
 
-int nsh_oci_load_image(oci_image_t *image, const char *path);
-void nsh_oci_free_image(oci_image_t *image);
+int nsh_oci_image_load(oci_image_t *image, const char *path);
+void nsh_oci_image_free(oci_image_t *image);
 int nsh_oci_digest_to_path(const char *image_path, const char *digest, char *path, size_t size);
 
 #endif
