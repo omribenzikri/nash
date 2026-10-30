@@ -46,14 +46,66 @@ static void nsh_layer_archive_entry_set_dest(
     archive_entry_set_pathname(entry, dest);
 }
 
+static int nsh_layer_extract_archive_data_blocks(
+    struct archive *reader, struct archive *writer)
+{
+    const void *buf;
+    size_t size;
+    la_int64_t offset;
+    int ret;
+
+    while ((ret = archive_read_data_block(reader, &buf, &size, &offset)) == ARCHIVE_OK) {
+        ret = archive_write_data_block(writer, buf, size, offset);
+        if (ret != ARCHIVE_OK) {
+            fprintf(stderr, "[x] Failed to write data block of layer archive: %s\n",
+                    archive_error_string(writer));
+            return -1;
+        }
+    }
+
+    if (ret != ARCHIVE_EOF) {
+        fprintf(stderr, "[x] Failed to read data block of layer archive: %s\n",
+                archive_error_string(reader));
+        return -1;
+    }
+
+    return 0;
+}
+
+static int nsh_layer_extract_archive_entry_single(
+    struct archive *reader, struct archive *writer, struct archive_entry *entry)
+{
+    int retcode;
+    int err;
+
+    retcode = archive_write_header(writer, entry);
+    if (retcode != ARCHIVE_OK) {
+        fprintf(stderr, "[x] Failed to write header of layer archive: %s\n",
+                archive_error_string(writer));
+        return -1;
+    }
+
+    // Hard links and whiteouts are not handled
+    err = nsh_layer_extract_archive_data_blocks(reader, writer);
+    if (err)
+        return -1;
+
+    return 0;
+}
+
 static int nsh_layer_extract_archive_entries(
     struct archive *reader, struct archive *writer, const char *snapshot_path)
 {
     struct archive_entry *entry;
     int retcode;
+    int err;
 
     while ((retcode = archive_read_next_header(reader, &entry)) == ARCHIVE_OK) {
         nsh_layer_archive_entry_set_dest(entry, snapshot_path);
+
+        err = nsh_layer_extract_archive_entry_single(reader, writer, entry);
+        if (err)
+            return -1;
 
         retcode = archive_read_data_skip(reader);
         if (retcode != ARCHIVE_OK) {
