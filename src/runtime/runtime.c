@@ -16,7 +16,7 @@
 #include "runtime/capabilities.h"
 #include "runtime/runtime.h"
 
-void nsh_container_startup(nsh_container_config_t *config)
+void nsh_container_startup(nsh_runtime_config_t *config)
 {
     int err;
 
@@ -28,7 +28,7 @@ void nsh_container_startup(nsh_container_config_t *config)
 
     umask(0);
 
-    err = nsh_pivot_root(config->image_path);
+    err = nsh_pivot_root(config->rootfs_path);
     if (err)
         exit(EXIT_FAILURE);
 
@@ -50,18 +50,7 @@ void nsh_container_startup(nsh_container_config_t *config)
     exit(EXIT_FAILURE);
 }
 
-// Assuming the buffer is at least NSH_HOSTNAME_LEN bytes long
-void nsh_generate_hostname(uuid_t container_id, char *buf)
-{
-    char uuid_string[UUID_STR_LEN];
-    char *hostname = uuid_string + UUID_STR_LEN - NSH_HOSTNAME_LEN;
-
-    assert(NSH_HOSTNAME_LEN < UUID_STR_LEN);
-    uuid_unparse_lower(container_id, uuid_string);
-    strncpy(buf, hostname, NSH_HOSTNAME_LEN - 1);
-}
-
-int nsh_clone_container(nsh_container_config_t *config, int cgroup_fd, pid_t *out)
+pid_t nsh_clone_container(nsh_runtime_config_t *config, int cgroup_fd)
 {
     pid_t pid;
 
@@ -84,31 +73,27 @@ int nsh_clone_container(nsh_container_config_t *config, int cgroup_fd, pid_t *ou
         assert(false);
     }
 
-    *out = pid;
-    return 0;
+    return pid;
 }
 
-int nsh_create_container(nsh_container_config_t *config, nsh_container_t *container)
+pid_t nsh_runtime_container_create(uuid_t id, nsh_runtime_config_t *config)
 {
+    pid_t pid;
     int cgroup_fd;
-    int clone_err;
-    int close_err;
+    int err;
 
-    uuid_generate_random(container->id);
-    nsh_generate_hostname(container->id, config->hostname);
-
-    cgroup_fd = nsh_create_cgroup(container->id, &config->resources);
+    cgroup_fd = nsh_create_cgroup(id, &config->resources);
     if (cgroup_fd == -1)
         goto error;
 
     printf("[+] Successfully created container cgroup\n");
 
-    clone_err = nsh_clone_container(config, cgroup_fd, &container->pid);
-    close_err = close(cgroup_fd);
+    pid = nsh_clone_container(config, cgroup_fd);
+    err = close(cgroup_fd);
 
-    if (close_err)
+    if (err)
         perror("[x] Failed to close cgroup file descriptor");
-    if (clone_err || close_err)
+    if (pid == -1 || err)
         goto error_del_cgroup;
 
     printf("[+] Successfully cloned child\n");
@@ -116,12 +101,12 @@ int nsh_create_container(nsh_container_config_t *config, nsh_container_t *contai
     return 0;
 
 error_del_cgroup:
-    nsh_delete_cgroup(container->id);
+    nsh_delete_cgroup(id);
 error:
     return -1;
 }
 
-void nsh_cleanup_container_resources(nsh_container_t *container)
+void nsh_runtime_container_cleanup(uuid_t id)
 {
-    nsh_delete_cgroup(container->id);
+    nsh_delete_cgroup(id);
 }

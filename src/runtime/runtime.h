@@ -1,28 +1,20 @@
 #ifndef _NASH_RUNTIME_RUNTIME_H
 #define _NASH_RUNTIME_RUNTIME_H
 
-#include <stdint.h>
-#include <sys/types.h>
 #include <uuid/uuid.h>
+#include <sys/types.h>
 #include "runtime/resources.h"
 
-#define NSH_HOSTNAME_LEN 13
-
 typedef struct {
-    uuid_t id;
-    pid_t pid;
-} nsh_container_t;
-
-typedef struct {
-    const char *image_path;
-    const char *exec_path;
+    char *hostname;
+    char *rootfs_path;
+    char *exec_path;
     char **exec_argv;
     char **exec_envp;
-    char hostname[NSH_HOSTNAME_LEN];
     nsh_resources_t resources;
-} nsh_container_config_t;
+} nsh_runtime_config_t;
 
-int nsh_create_container(nsh_container_config_t *config, nsh_container_t *container);
-void nsh_cleanup_container_resources(nsh_container_t *container);
+pid_t nsh_runtime_container_create(uuid_t id, nsh_runtime_config_t *config);
+void nsh_runtime_container_cleanup(uuid_t id);
 
 #endif

@@ -7,8 +7,7 @@
 #include <sys/wait.h>
 #include <sys/statfs.h>
 #include <linux/magic.h>
-#include "runtime/runtime.h"
-#include "image/oci.h"
+#include "container.h"
 
 const struct option nsh_options[] = {
     { "cpu-time",    required_argument, NULL, 'c' },
@@ -112,16 +111,6 @@ int main(int argc, char **argv)
     bool system_compat;
     int err;
 
-    oci_image_t image;
-
-    err = nsh_oci_load_image(&image, "images/oci/alpine");
-    if (err) {
-        fprintf(stderr, "[x] Failed to load OCI image\n");
-        return EXIT_FAILURE;
-    }
-
-    return EXIT_SUCCESS;
-
     err = nsh_parse_options(argc, argv, &config);
     if (err) {
         fprintf(stderr, "Error: invalid arguments supplied\n");
@@ -144,7 +133,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    err = nsh_create_container(&config, &container);
+    err = nsh_container_create(&config, &container);
     if (err) {
         fprintf(stderr, "[x] Failed to create container, exiting\n");
         return EXIT_FAILURE;
@@ -155,7 +144,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    nsh_cleanup_container_resources(&container);
+    nsh_container_delete(&container);
 
     return EXIT_SUCCESS;
 }
