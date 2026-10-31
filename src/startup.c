@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdbool.h>
+#include <locale.h>
 #include <sys/stat.h>
 #include <sys/statfs.h>
 #include <linux/magic.h>
@@ -60,6 +61,8 @@ static int nsh_workdir_create()
 int nsh_startup()
 {
     int err;
+
+    setlocale(LC_ALL, "");
 
     err = nsh_workdir_create();
     if (err)

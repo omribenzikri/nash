@@ -1,10 +1,14 @@
 #include <stdio.h>
+#include <stddef.h>
+#include <assert.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <linux/limits.h>
 #include <archive.h>
 #include <archive_entry.h>
+#include <collectc/cc_common.h>
+#include <collectc/cc_array.h>
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
 #include <ocispec/image_spec_schema_content_descriptor.h>
 #include "common/constants.h"
@@ -19,7 +23,6 @@ static int nsh_layer_digest_to_snapshot_path(
 {
     int snapshot_fd;
     int err;
-
     snapshot_fd = openat(snapshots_dir_fd, digest, O_RDONLY | O_DIRECTORY);
     if (snapshot_fd == -1) {
         perror("[x] Failed to open snapshot directory");
@@ -35,18 +38,79 @@ static int nsh_layer_digest_to_snapshot_path(
     return 0;
 }
 
+static int nsh_pending_hardlinks_add(
+    struct cc_array_s *arr, struct archive_entry *entry)
+{
+    struct archive_entry *cloned;
+    enum cc_stat cc_stat;
+
+    cloned = archive_entry_clone(entry);
+    if (cloned == NULL) {
+        fprintf(stderr, "[x] Failed to clone hardlink archive entry\n");
+        goto error;
+    }
+
+    cc_stat = cc_array_add(arr, cloned);
+    if (cc_stat != CC_OK) {
+        fprintf(stderr, "[x] Failed to insert pending hardlink archive entry\n");
+        goto error_free_entry;
+    }
+
+    return 0;
+
+error_free_entry:
+    archive_entry_free(cloned);
+error:
+    return -1;
+}
+
+static int nsh_pending_hardlinks_extract(
+    struct cc_array_s *arr, struct archive *writer)
+{
+    struct archive_entry *entry;
+    enum cc_stat cc_stat;
+    int retcode;
+
+    for (size_t i = 0; i < cc_array_size(arr); i++) {
+        cc_stat = cc_array_get_at(arr, i, (void **)&entry);
+        assert(cc_stat == CC_OK);
+
+        retcode = archive_write_header(writer, entry);
+        if (retcode != ARCHIVE_OK) {
+            fprintf(stderr, "[x] Failed to write header of layer archive: %s\n",
+                    archive_error_string(writer));
+            return -1;
+        }
+
+        retcode = archive_write_finish_entry(writer);
+        if (retcode != ARCHIVE_OK) {
+            fprintf(stderr, "[x] Failed to finalize layer archive entry: %s\n",
+                    archive_error_string(writer));
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
 static void nsh_layer_archive_entry_set_dest(
     struct archive_entry *entry, const char *snapshot_path)
 {
-    const char *pathname;
-    char dest[PATH_MAX];
+    const char *path;
+    char buf[PATH_MAX];
 
-    pathname = archive_entry_pathname(entry);
-    snprintf(dest, sizeof(dest), "%s/%s", snapshot_path, pathname);
-    archive_entry_set_pathname(entry, dest);
+    path = archive_entry_pathname(entry);
+    snprintf(buf, sizeof(buf), "%s/%s", snapshot_path, path);
+    archive_entry_set_pathname(entry, buf);
+
+    path = archive_entry_hardlink(entry);
+    if (path != NULL) {
+        snprintf(buf, sizeof(buf), "%s/%s", snapshot_path, path);
+        archive_entry_set_hardlink(entry, buf);
+    }
 }
 
-static int nsh_layer_extract_archive_data_blocks(
+static int nsh_layer_extract_copy_data_blocks(
     struct archive *reader, struct archive *writer)
 {
     const void *buf;
@@ -85,8 +149,8 @@ static int nsh_layer_extract_archive_entry_single(
         return -1;
     }
 
-    // Hard links and whiteouts are not handled
-    err = nsh_layer_extract_archive_data_blocks(reader, writer);
+    // Whiteouts are not handled
+    err = nsh_layer_extract_copy_data_blocks(reader, writer);
     if (err)
         return -1;
 
@@ -97,31 +161,64 @@ static int nsh_layer_extract_archive_entries(
     struct archive *reader, struct archive *writer, const char *snapshot_path)
 {
     struct archive_entry *entry;
+    struct cc_array_s *pending_hardlinks;
+    enum cc_stat cc_stat;
+    int ret = 0;
     int retcode;
     int err;
+
+    cc_stat = cc_array_new(&pending_hardlinks);
+    if (cc_stat != CC_OK) {
+        fprintf(stderr, "[x] Failed to allocate pending hardlinks array\n");
+        ret = -1;
+        goto out;
+    }
 
     while ((retcode = archive_read_next_header(reader, &entry)) == ARCHIVE_OK) {
         nsh_layer_archive_entry_set_dest(entry, snapshot_path);
 
-        err = nsh_layer_extract_archive_entry_single(reader, writer, entry);
-        if (err)
-            return -1;
+        if (archive_entry_hardlink(entry)) {
+            err = nsh_pending_hardlinks_add(pending_hardlinks, entry);
+            if (err) {
+                ret = -1;
+                goto out_destroy_arr;
+            }
+        }
+        else {
+            err = nsh_layer_extract_archive_entry_single(reader, writer, entry);
+            if (err) {
+                ret = -1;
+                goto out_destroy_arr;
+            }
+        }
 
         retcode = archive_read_data_skip(reader);
         if (retcode != ARCHIVE_OK) {
             fprintf(stderr, "[x] Failed to skip entry in layer archive: %s\n",
                     archive_error_string(writer));
-            return -1;
+            ret = -1;
+            goto out_destroy_arr;
         }
     }
 
     if (retcode != ARCHIVE_EOF) {
         fprintf(stderr, "[x] Failed to read header of layer archive: %s\n",
                 archive_error_string(reader));
-        return -1;
+        ret = -1;
+        goto out_destroy_arr;
     }
 
-    return 0;
+    err = nsh_pending_hardlinks_extract(pending_hardlinks, writer);
+    if (err) {
+        ret = -1;
+        goto out_destroy_arr;
+    }
+
+out_destroy_arr:
+    cc_array_destroy_cb(pending_hardlinks,
+        (void (*)(void *))archive_entry_free);
+out:
+    return ret;
 }
 
 static int nsh_layer_extract_archive(const char *layer_path, const char *snapshot_path)
