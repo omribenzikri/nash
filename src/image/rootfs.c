@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stddef.h>
+#include <string.h>
 #include <assert.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -36,6 +37,28 @@ static int nsh_layer_digest_to_snapshot_path(
     }
 
     return 0;
+}
+
+static int nsh_layer_media_type_to_format(const char *media_type)
+{
+    if (strncmp(media_type, OCI_MEDIA_TYPE_TAR,
+        strlen(OCI_MEDIA_TYPE_TAR)) == 0) {
+            return ARCHIVE_FORMAT_TAR;
+        }
+
+    return -1;
+}
+
+static int nsh_layer_media_type_to_filter(const char *media_type)
+{
+    if (strcmp(media_type, OCI_MEDIA_TYPE_TAR) == 0)
+        return ARCHIVE_FILTER_NONE;
+    if (strcmp(media_type, OCI_MEDIA_TYPE_TAR_GZIP) == 0)
+        return ARCHIVE_FILTER_GZIP;
+    if (strcmp(media_type, OCI_MEDIA_TYPE_TAR_ZSTD) == 0)
+        return ARCHIVE_FILTER_ZSTD;
+
+    return -1;
 }
 
 static int nsh_pending_hardlinks_add(
@@ -221,7 +244,9 @@ out:
     return ret;
 }
 
-static int nsh_layer_extract_archive(const char *layer_path, const char *snapshot_path)
+static int nsh_layer_extract_archive(
+    const char *layer_path, const char *snapshot_path,
+    int format, int filter)
 {
     struct archive *reader;
     struct archive *writer;
@@ -232,8 +257,8 @@ static int nsh_layer_extract_archive(const char *layer_path, const char *snapsho
     reader = archive_read_new();
     writer = archive_write_disk_new();
 
-    archive_read_support_format_all(reader);
-    archive_read_support_filter_all(reader);
+    archive_read_support_format_by_code(reader, format);
+    archive_read_support_filter_by_code(reader, filter);
 
     archive_write_disk_set_options(
         writer,
@@ -271,6 +296,8 @@ static int nsh_layer_extract_single(const char *image_path, int snapshots_dir_fd
 {
     char layer_path[PATH_MAX];
     char snapshot_path[PATH_MAX];
+    int format;
+    int filter;
     int err;
 
     err = mkdirat(snapshots_dir_fd, layer_descriptor->digest, S_IRWXU);
@@ -293,7 +320,16 @@ static int nsh_layer_extract_single(const char *image_path, int snapshots_dir_fd
         return -1;
     }
 
-    err = nsh_layer_extract_archive(layer_path, snapshot_path);
+    format = nsh_layer_media_type_to_format(layer_descriptor->media_type);
+    filter = nsh_layer_media_type_to_filter(layer_descriptor->media_type);
+
+    if (format == -1 || filter == -1) {
+        fprintf(stderr, "[x] Unsupported layer media type: %s\n",
+                layer_descriptor->media_type);
+        return -1;
+    }
+
+    err = nsh_layer_extract_archive(layer_path, snapshot_path, format, filter);
     if (err)
         return -1;
 
