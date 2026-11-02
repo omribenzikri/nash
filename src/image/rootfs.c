@@ -15,29 +15,12 @@
 #include <ocispec/image_spec_schema_content_descriptor.h>
 #include "common/constants.h"
 #include "utils/filesystem.h"
+#include "utils/archive.h"
 #include "image/oci.h"
 #include "image/overlay.h"
 #include "image/rootfs.h"
 
 #define NSH_LAYER_EXTRACTION_BLOCK_SIZE 10240
-
-static bool archive_entry_xattr_exists(struct archive_entry *entry, const char *name)
-{
-    const char *xname;
-    const void *xvalue;
-    size_t xsize;
-    int retcode;
-
-    archive_entry_xattr_reset(entry);
-
-    while ((retcode = archive_entry_xattr_next(
-        entry, &xname, &xvalue, &xsize)) == ARCHIVE_OK) {
-            if (strcmp(xname, name) == 0)
-                return true;
-        }
-
-    return false;
-}
 
 static int nsh_layer_digest_to_snapshot_path(
     int snapshots_dir_fd, const char *digest, char *path, size_t size)
