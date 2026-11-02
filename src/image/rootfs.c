@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stddef.h>
+#include <stdbool.h>
 #include <string.h>
 #include <assert.h>
 #include <unistd.h>
@@ -19,6 +20,24 @@
 #include "image/rootfs.h"
 
 #define NSH_LAYER_EXTRACTION_BLOCK_SIZE 10240
+
+static bool archive_entry_xattr_exists(struct archive_entry *entry, const char *name)
+{
+    const char *xname;
+    const void *xvalue;
+    size_t xsize;
+    int retcode;
+
+    archive_entry_xattr_reset(entry);
+
+    while ((retcode = archive_entry_xattr_next(
+        entry, &xname, &xvalue, &xsize)) == ARCHIVE_OK) {
+            if (strcmp(xname, name) == 0)
+                return true;
+        }
+
+    return false;
+}
 
 static int nsh_layer_digest_to_snapshot_path(
     int snapshots_dir_fd, const char *digest, char *path, size_t size)
@@ -166,6 +185,29 @@ static int nsh_opaque_whiteouts_apply(struct cc_array_s *arr)
     return 0;
 }
 
+static bool nsh_layer_entry_is_overlayfs_whiteout(struct archive_entry *entry)
+{
+    if (archive_entry_filetype(entry) == AE_IFCHR &&
+        archive_entry_rdev(entry) == OVERLAYFS_WHITEOUT_DEV)
+            return true;
+
+    if (archive_entry_xattr_exists(entry, OVERLAYFS_WHITEOUT_XATTR))
+        return false;
+
+    return false;
+}
+
+static bool nsh_layer_entry_is_overlayfs_opaque(struct archive_entry *entry)
+{
+    return archive_entry_xattr_exists(entry, OVERLAYFS_OPAQUE_XATTR);
+}
+
+static bool nsh_layer_archive_entry_is_valid(struct archive_entry *entry)
+{
+    return !nsh_layer_entry_is_overlayfs_whiteout(entry) &&
+           !nsh_layer_entry_is_overlayfs_opaque(entry);
+}
+
 static void nsh_layer_archive_entry_set_dest(
     struct archive_entry *entry, const char *snapshot_path)
 {
@@ -256,6 +298,13 @@ static int nsh_layer_extract_archive_entries(
 
     while ((retcode = archive_read_next_header(reader, &entry)) == ARCHIVE_OK) {
         nsh_layer_archive_entry_set_dest(entry, snapshot_path);
+
+        if (!nsh_layer_archive_entry_is_valid(entry)) {
+            fprintf(stderr, "[x] Invalid layer entry found: %s\n",
+                    archive_entry_pathname(entry));
+            ret = -1;
+            goto out_destroy_opq_arr;
+        }
 
         if (archive_entry_hardlink(entry)) {
             err = nsh_archive_entry_track(hardlinks, entry);

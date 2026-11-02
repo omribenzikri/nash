@@ -4,9 +4,6 @@
 #include "utils/filesystem.h"
 #include "image/overlay.h"
 
-#define OVERLAYFS_WHITEOUT_XATTR "trusted.overlay.whiteout"
-#define OVERLAYFS_OPAQUE_XATTR "trusted.overlay.opaque"
-
 int nsh_overlay_whiteout_create(const char *path)
 {
     int err;
