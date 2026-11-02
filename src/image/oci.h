@@ -2,6 +2,7 @@
 #define _NASH_IMAGE_OCI_H
 
 #include <stddef.h>
+#include <stdbool.h>
 #include <ocispec/image_spec_schema_image_layout_schema.h>
 #include <ocispec/image_spec_schema_image_index_schema.h>
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
@@ -23,5 +24,11 @@ typedef struct {
 int nsh_oci_image_load(oci_image_t *image, const char *path);
 void nsh_oci_image_free(oci_image_t *image);
 int nsh_oci_digest_to_path(const char *image_path, const char *digest, char *path, size_t size);
+
+bool nsh_oci_is_whiteout(const char *pathname);
+bool nsh_oci_is_valid_whiteout(const char *pathname);
+bool nsh_oci_is_regular_whiteout(const char *pathname);
+bool nsh_oci_is_opaque_whiteout(const char *pathname);
+int nsh_oci_whiteout_to_file(const char *pathname, char *buf, size_t size);
 
 #endif

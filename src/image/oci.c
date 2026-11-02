@@ -2,6 +2,8 @@
 #include <string.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <string.h>
+#include <assert.h>
 #include <linux/limits.h>
 #include <ocispec/json_common.h>
 #include <ocispec/image_spec_schema_image_layout_schema.h>
@@ -9,7 +11,11 @@
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
 #include <ocispec/image_spec_schema_content_descriptor.h>
 #include <ocispec/image_spec_schema_config_schema.h>
+#include "utils/filesystem.h"
 #include "image/oci.h"
+
+#define OCI_WHITEOUT_PREFIX ".wh."
+#define OCI_OPAQUE_WHITEOUT_NAME ".wh..wh..opq"
 
 #define NSH_OCI_SUPPORTED_IMAGE_LAYOUT_VERSION "1.0.0"
 
@@ -245,4 +251,55 @@ void nsh_oci_image_free(oci_image_t *image)
     free_image_spec_schema_image_index_schema(image->index);
     free_image_spec_schema_image_manifest_schema(image->manifest);
     free_image_spec_schema_config_schema(image->config);
+}
+
+bool nsh_oci_is_whiteout(const char *pathname)
+{
+    char base_name[PATH_MAX];
+
+    split_path(pathname, NULL, 0, base_name, sizeof(base_name));
+
+    return strncmp(base_name, OCI_WHITEOUT_PREFIX,
+        strlen(OCI_WHITEOUT_PREFIX)) == 0;
+}
+
+bool nsh_oci_is_valid_whiteout(const char *pathname)
+{
+    char base_name[PATH_MAX];
+
+    split_path(pathname, NULL, 0, base_name, sizeof(base_name));
+
+    return strcmp(base_name, OCI_WHITEOUT_PREFIX) != 0;
+}
+
+bool nsh_oci_is_opaque_whiteout(const char *pathname)
+{
+    char base_name[PATH_MAX];
+
+    split_path(pathname, NULL, 0, base_name, sizeof(base_name));
+
+    return strcmp(base_name, OCI_OPAQUE_WHITEOUT_NAME) == 0;
+}
+
+bool nsh_oci_is_regular_whiteout(const char *pathname)
+{
+    return nsh_oci_is_whiteout(pathname) &&
+           !nsh_oci_is_opaque_whiteout(pathname);
+}
+
+int nsh_oci_whiteout_to_file(const char *pathname, char *buf, size_t size)
+{
+    char dir_name[PATH_MAX];
+    char base_name[PATH_MAX];
+
+    split_path(pathname,
+        dir_name, sizeof(dir_name),
+        base_name, sizeof(base_name));
+
+    if (strlen(base_name) <= strlen(OCI_WHITEOUT_PREFIX))
+        return -1;
+
+    snprintf(buf, size, "%s/%s", dir_name, base_name + strlen(OCI_WHITEOUT_PREFIX));
+
+    return 0;
 }

@@ -15,6 +15,7 @@
 #include "common/constants.h"
 #include "utils/filesystem.h"
 #include "image/oci.h"
+#include "image/overlay.h"
 #include "image/rootfs.h"
 
 #define NSH_LAYER_EXTRACTION_BLOCK_SIZE 10240
@@ -61,7 +62,7 @@ static int nsh_layer_media_type_to_filter(const char *media_type)
     return -1;
 }
 
-static int nsh_pending_hardlinks_add(
+static int nsh_archive_entry_track(
     struct cc_array_s *arr, struct archive_entry *entry)
 {
     struct archive_entry *cloned;
@@ -69,13 +70,13 @@ static int nsh_pending_hardlinks_add(
 
     cloned = archive_entry_clone(entry);
     if (cloned == NULL) {
-        fprintf(stderr, "[x] Failed to clone hardlink archive entry\n");
+        fprintf(stderr, "[x] Failed to clone archive entry\n");
         goto error;
     }
 
     cc_stat = cc_array_add(arr, cloned);
     if (cc_stat != CC_OK) {
-        fprintf(stderr, "[x] Failed to insert pending hardlink archive entry\n");
+        fprintf(stderr, "[x] Failed to insert archive entry\n");
         goto error_free_entry;
     }
 
@@ -87,7 +88,7 @@ error:
     return -1;
 }
 
-static int nsh_pending_hardlinks_extract(
+static int nsh_hardlinks_extract(
     struct cc_array_s *arr, struct archive *writer)
 {
     struct archive_entry *entry;
@@ -111,6 +112,55 @@ static int nsh_pending_hardlinks_extract(
                     archive_error_string(writer));
             return -1;
         }
+    }
+
+    return 0;
+}
+
+static int nsh_whiteout_create(struct archive_entry *entry)
+{
+    const char *pathname;
+    char file_path[PATH_MAX];
+    int err;
+
+    pathname = archive_entry_pathname(entry);
+
+    if (!nsh_oci_is_valid_whiteout(pathname)) {
+        fprintf(stderr, "[x] Invalid whiteout found: %s\n", pathname);
+        return -1;
+    }
+
+    err = nsh_oci_whiteout_to_file(pathname, file_path, sizeof(file_path));
+    if (err) {
+        fprintf(stderr,
+            "[x] Failed to resolve file path by whiteout: %s\n", pathname);
+        return -1;
+    }
+
+    err = nsh_overlay_whiteout_create(file_path);
+    if (err)
+        return -1;
+
+    return 0;
+}
+
+static int nsh_opaque_whiteouts_apply(struct cc_array_s *arr)
+{
+    char dir_name[PATH_MAX];
+    struct archive_entry *entry;
+    enum cc_stat cc_stat;
+    int err;
+
+    for (size_t i = 0; i < cc_array_size(arr); i++) {
+        cc_stat = cc_array_get_at(arr, i, (void **)&entry);
+        assert(cc_stat == CC_OK);
+
+        split_path(archive_entry_pathname(entry),
+            dir_name, sizeof(dir_name), NULL, 0);
+
+        err = nsh_overlay_opaque_set(dir_name);
+        if (err)
+            return -1;
     }
 
     return 0;
@@ -172,7 +222,6 @@ static int nsh_layer_extract_archive_entry_single(
         return -1;
     }
 
-    // Whiteouts are not handled
     err = nsh_layer_extract_copy_data_blocks(reader, writer);
     if (err)
         return -1;
@@ -184,34 +233,56 @@ static int nsh_layer_extract_archive_entries(
     struct archive *reader, struct archive *writer, const char *snapshot_path)
 {
     struct archive_entry *entry;
-    struct cc_array_s *pending_hardlinks;
+    struct cc_array_s *hardlinks;
+    struct cc_array_s *opaque_whiteouts;
     enum cc_stat cc_stat;
     int ret = 0;
     int retcode;
     int err;
 
-    cc_stat = cc_array_new(&pending_hardlinks);
+    cc_stat = cc_array_new(&hardlinks);
     if (cc_stat != CC_OK) {
         fprintf(stderr, "[x] Failed to allocate pending hardlinks array\n");
         ret = -1;
         goto out;
     }
 
+    cc_stat = cc_array_new(&opaque_whiteouts);
+    if (cc_stat != CC_OK) {
+        fprintf(stderr, "[x] Failed to allocate pending opaque whiteouts array\n");
+        ret = -1;
+        goto out_destroy_link_arr;
+    }
+
     while ((retcode = archive_read_next_header(reader, &entry)) == ARCHIVE_OK) {
         nsh_layer_archive_entry_set_dest(entry, snapshot_path);
 
         if (archive_entry_hardlink(entry)) {
-            err = nsh_pending_hardlinks_add(pending_hardlinks, entry);
+            err = nsh_archive_entry_track(hardlinks, entry);
             if (err) {
                 ret = -1;
-                goto out_destroy_arr;
+                goto out_destroy_opq_arr;
+            }
+        }
+        else if (nsh_oci_is_regular_whiteout(archive_entry_pathname(entry))) {
+            err = nsh_whiteout_create(entry);
+            if (err) {
+                ret = -1;
+                goto out_destroy_opq_arr;
+            }
+        }
+        else if (nsh_oci_is_opaque_whiteout(archive_entry_pathname(entry))) {
+            err = nsh_archive_entry_track(opaque_whiteouts, entry);
+            if (err) {
+                ret = -1;
+                goto out_destroy_opq_arr;
             }
         }
         else {
             err = nsh_layer_extract_archive_entry_single(reader, writer, entry);
             if (err) {
                 ret = -1;
-                goto out_destroy_arr;
+                goto out_destroy_opq_arr;
             }
         }
 
@@ -220,7 +291,7 @@ static int nsh_layer_extract_archive_entries(
             fprintf(stderr, "[x] Failed to skip entry in layer archive: %s\n",
                     archive_error_string(writer));
             ret = -1;
-            goto out_destroy_arr;
+            goto out_destroy_opq_arr;
         }
     }
 
@@ -228,17 +299,26 @@ static int nsh_layer_extract_archive_entries(
         fprintf(stderr, "[x] Failed to read header of layer archive: %s\n",
                 archive_error_string(reader));
         ret = -1;
-        goto out_destroy_arr;
+        goto out_destroy_opq_arr;
     }
 
-    err = nsh_pending_hardlinks_extract(pending_hardlinks, writer);
+    err = nsh_hardlinks_extract(hardlinks, writer);
     if (err) {
         ret = -1;
-        goto out_destroy_arr;
+        goto out_destroy_opq_arr;
     }
 
-out_destroy_arr:
-    cc_array_destroy_cb(pending_hardlinks,
+    err = nsh_opaque_whiteouts_apply(opaque_whiteouts);
+    if (err) {
+        ret = -1;
+        goto out_destroy_opq_arr;
+    }
+
+out_destroy_opq_arr:
+    cc_array_destroy_cb(opaque_whiteouts,
+        (void (*)(void *))archive_entry_free);
+out_destroy_link_arr:
+    cc_array_destroy_cb(hardlinks,
         (void (*)(void *))archive_entry_free);
 out:
     return ret;
