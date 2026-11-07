@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stddef.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/xattr.h>
 #include <sys/mount.h>
@@ -124,7 +125,7 @@ static int nsh_overlay_config(int fsfd,
 {
     int err;
 
-    for (size_t i = 0; i < manifest->layers_len; i++) {
+    for (int i = manifest->layers_len - 1; i >= 0; i--) {
         err = nsh_lowerdir_add(fsfd, workspace_path, manifest->layers[i]->digest);
         if (err)
             return -1;
@@ -138,7 +139,43 @@ static int nsh_overlay_config(int fsfd,
     if (err)
         return -1;
 
+    err = fsconfig(fsfd, FSCONFIG_CMD_CREATE, NULL, NULL, 0);
+    if (err) {
+        perror("[x] Failed to create overlayfs instance");
+        return -1;
+    }
+
     return 0;
+}
+
+static int nsh_overlay_mount(int fsfd, const char *target)
+{
+    int mntfd;
+    int ret = 0;
+    int err;
+
+    mntfd = fsmount(fsfd, 0, 0);
+    if (mntfd == -1) {
+        perror("[x] Failed to instantiate mount object");
+        ret = -1;
+        goto out;
+    }
+
+    err = move_mount(mntfd, "", AT_FDCWD, target, MOVE_MOUNT_F_EMPTY_PATH);
+    if (err) {
+        perror("[x] Failed to attach mount object");
+        ret = -1;
+        goto out_close_mntfd;
+    }
+
+out_close_mntfd:
+    err = close(mntfd);
+    if (err) {
+        perror("[x] Failed to close mount object");
+        ret = -1;
+    }
+out:
+    return ret;
 }
 
 int nsh_overlay_create(
@@ -164,6 +201,12 @@ int nsh_overlay_create(
     }
 
     nsh_resolve_rootfs_path(workspace_path, rootfs_path, size);
+
+    err = nsh_overlay_mount(fsfd, rootfs_path);
+    if (err) {
+        ret = -1;
+        goto out_close_fsfd;
+    }
 
 out_close_fsfd:
     err = close(fsfd);

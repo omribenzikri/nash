@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/mount.h>
 #include <linux/limits.h>
 #include "common/constants.h"
 #include "image/oci.h"
@@ -120,4 +121,17 @@ out_close_workdir:
     }
 out:
     return ret;
+}
+
+int nsh_image_rootfs_destroy(const char *path)
+{
+    int err;
+
+    err = umount(path);
+    if (err) {
+        perror("[x] Failed to unmount container rootfs");
+        return -1;
+    }
+
+    return 0;
 }
