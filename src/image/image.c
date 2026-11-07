@@ -8,6 +8,7 @@
 #include "common/constants.h"
 #include "image/oci.h"
 #include "image/layer.h"
+#include "image/overlay.h"
 #include "image/image.h"
 
 struct nsh_image {
@@ -105,8 +106,11 @@ int nsh_image_rootfs_prepare(
         goto out_close_workdir;
     }
 
-    (void)path;
-    (void)size;
+    err = nsh_overlay_create(image->oci.manifest, workdir_path, path, size);
+    if (err) {
+        ret = -1;
+        goto out_close_workdir;
+    }
 
 out_close_workdir:
     err = close(workdir_fd);

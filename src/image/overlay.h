@@ -1,7 +1,9 @@
 #ifndef _NASH_IMAGE_OVERLAY_H
 #define _NASH_IMAGE_OVERLAY_H
 
+#include <stddef.h>
 #include <sys/sysmacros.h>
+#include <ocispec/image_spec_schema_image_manifest_schema.h>
 
 #define OVERLAYFS_WHITEOUT_DEV makedev(0, 0)
 #define OVERLAYFS_WHITEOUT_XATTR "trusted.overlay.whiteout"
@@ -9,5 +11,11 @@
 
 int nsh_overlay_whiteout_create(const char *path);
 int nsh_overlay_opaque_set(const char *path);
+
+int nsh_overlay_create(
+    image_spec_schema_image_manifest_schema *manifest,
+    const char *workspace_path,
+    char *rootfs_path, size_t size
+);
 
 #endif
