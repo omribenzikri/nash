@@ -3,12 +3,16 @@
 
 #include <limits.h>
 #include <sys/types.h>
+#include <linux/limits.h>
 #include <uuid/uuid.h>
 #include "runtime/resources.h"
+#include "runtime/runtime.h"
 
 typedef struct {
     uuid_t id;
     pid_t pid;
+    char workdir_path[PATH_MAX];
+    nsh_runtime_config_t runtime_config;
 } nsh_container_t;
 
 typedef struct {

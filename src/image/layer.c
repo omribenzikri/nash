@@ -1,0 +1,490 @@
+#include <stdio.h>
+#include <stddef.h>
+#include <stdbool.h>
+#include <string.h>
+#include <assert.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <linux/limits.h>
+#include <archive.h>
+#include <archive_entry.h>
+#include <collectc/cc_common.h>
+#include <collectc/cc_array.h>
+#include <ocispec/image_spec_schema_image_manifest_schema.h>
+#include <ocispec/image_spec_schema_content_descriptor.h>
+#include "common/constants.h"
+#include "utils/filesystem.h"
+#include "utils/archive.h"
+#include "image/oci.h"
+#include "image/overlay.h"
+#include "image/layer.h"
+
+#define NSH_LAYER_EXTRACTION_BLOCK_SIZE 10240
+
+static int nsh_layer_digest_to_snapshot_path(
+    int snapshots_dir_fd, const char *digest, char *path, size_t size)
+{
+    int snapshot_fd;
+    int err;
+    snapshot_fd = openat(snapshots_dir_fd, digest, O_RDONLY | O_DIRECTORY);
+    if (snapshot_fd == -1) {
+        perror("[x] Failed to open snapshot directory");
+        return -1;
+    }
+
+    err = fd_to_pathname(snapshot_fd, path, size);
+    if (err) {
+        perror("[x] Failed to convert file descriptor to pathname");
+        return -1;
+    }
+
+    return 0;
+}
+
+static int nsh_layer_media_type_to_format(const char *media_type)
+{
+    if (strncmp(media_type, OCI_MEDIA_TYPE_TAR,
+        strlen(OCI_MEDIA_TYPE_TAR)) == 0) {
+            return ARCHIVE_FORMAT_TAR;
+        }
+
+    return -1;
+}
+
+static int nsh_layer_media_type_to_filter(const char *media_type)
+{
+    if (strcmp(media_type, OCI_MEDIA_TYPE_TAR) == 0)
+        return ARCHIVE_FILTER_NONE;
+    if (strcmp(media_type, OCI_MEDIA_TYPE_TAR_GZIP) == 0)
+        return ARCHIVE_FILTER_GZIP;
+    if (strcmp(media_type, OCI_MEDIA_TYPE_TAR_ZSTD) == 0)
+        return ARCHIVE_FILTER_ZSTD;
+
+    return -1;
+}
+
+static int nsh_archive_entry_track(
+    struct cc_array_s *arr, struct archive_entry *entry)
+{
+    struct archive_entry *cloned;
+    enum cc_stat cc_stat;
+
+    cloned = archive_entry_clone(entry);
+    if (cloned == NULL) {
+        fprintf(stderr, "[x] Failed to clone archive entry\n");
+        goto error;
+    }
+
+    cc_stat = cc_array_add(arr, cloned);
+    if (cc_stat != CC_OK) {
+        fprintf(stderr, "[x] Failed to insert archive entry\n");
+        goto error_free_entry;
+    }
+
+    return 0;
+
+error_free_entry:
+    archive_entry_free(cloned);
+error:
+    return -1;
+}
+
+static int nsh_hardlinks_extract(
+    struct cc_array_s *arr, struct archive *writer)
+{
+    struct archive_entry *entry;
+    enum cc_stat cc_stat;
+    int retcode;
+
+    for (size_t i = 0; i < cc_array_size(arr); i++) {
+        cc_stat = cc_array_get_at(arr, i, (void **)&entry);
+        assert(cc_stat == CC_OK);
+
+        retcode = archive_write_header(writer, entry);
+        if (retcode != ARCHIVE_OK) {
+            fprintf(stderr, "[x] Failed to write header of layer archive: %s\n",
+                    archive_error_string(writer));
+            return -1;
+        }
+
+        retcode = archive_write_finish_entry(writer);
+        if (retcode != ARCHIVE_OK) {
+            fprintf(stderr, "[x] Failed to finalize layer archive entry: %s\n",
+                    archive_error_string(writer));
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+static int nsh_whiteout_create(struct archive_entry *entry)
+{
+    const char *pathname;
+    char file_path[PATH_MAX];
+    int err;
+
+    pathname = archive_entry_pathname(entry);
+
+    if (!nsh_oci_is_valid_whiteout(pathname)) {
+        fprintf(stderr, "[x] Invalid whiteout found: %s\n", pathname);
+        return -1;
+    }
+
+    err = nsh_oci_whiteout_to_file(pathname, file_path, sizeof(file_path));
+    if (err) {
+        fprintf(stderr,
+            "[x] Failed to resolve file path by whiteout: %s\n", pathname);
+        return -1;
+    }
+
+    err = nsh_overlay_whiteout_create(file_path);
+    if (err)
+        return -1;
+
+    return 0;
+}
+
+static int nsh_opaque_whiteouts_apply(struct cc_array_s *arr)
+{
+    char dir_name[PATH_MAX];
+    struct archive_entry *entry;
+    enum cc_stat cc_stat;
+    int err;
+
+    for (size_t i = 0; i < cc_array_size(arr); i++) {
+        cc_stat = cc_array_get_at(arr, i, (void **)&entry);
+        assert(cc_stat == CC_OK);
+
+        split_path(archive_entry_pathname(entry),
+            dir_name, sizeof(dir_name), NULL, 0);
+
+        err = nsh_overlay_opaque_set(dir_name);
+        if (err)
+            return -1;
+    }
+
+    return 0;
+}
+
+static bool nsh_layer_entry_is_overlayfs_whiteout(struct archive_entry *entry)
+{
+    if (archive_entry_filetype(entry) == AE_IFCHR &&
+        archive_entry_rdev(entry) == OVERLAYFS_WHITEOUT_DEV)
+            return true;
+
+    if (archive_entry_xattr_exists(entry, OVERLAYFS_WHITEOUT_XATTR))
+        return false;
+
+    return false;
+}
+
+static bool nsh_layer_entry_is_overlayfs_opaque(struct archive_entry *entry)
+{
+    return archive_entry_xattr_exists(entry, OVERLAYFS_OPAQUE_XATTR);
+}
+
+static bool nsh_layer_archive_entry_is_valid(struct archive_entry *entry)
+{
+    return !nsh_layer_entry_is_overlayfs_whiteout(entry) &&
+           !nsh_layer_entry_is_overlayfs_opaque(entry);
+}
+
+static void nsh_layer_archive_entry_set_dest(
+    struct archive_entry *entry, const char *snapshot_path)
+{
+    const char *path;
+    char buf[PATH_MAX];
+
+    path = archive_entry_pathname(entry);
+    snprintf(buf, sizeof(buf), "%s/%s", snapshot_path, path);
+    archive_entry_set_pathname(entry, buf);
+
+    path = archive_entry_hardlink(entry);
+    if (path != NULL) {
+        snprintf(buf, sizeof(buf), "%s/%s", snapshot_path, path);
+        archive_entry_set_hardlink(entry, buf);
+    }
+}
+
+static int nsh_layer_extract_copy_data_blocks(
+    struct archive *reader, struct archive *writer)
+{
+    const void *buf;
+    size_t size;
+    la_int64_t offset;
+    int ret;
+
+    while ((ret = archive_read_data_block(reader, &buf, &size, &offset)) == ARCHIVE_OK) {
+        ret = archive_write_data_block(writer, buf, size, offset);
+        if (ret != ARCHIVE_OK) {
+            fprintf(stderr, "[x] Failed to write data block of layer archive: %s\n",
+                    archive_error_string(writer));
+            return -1;
+        }
+    }
+
+    if (ret != ARCHIVE_EOF) {
+        fprintf(stderr, "[x] Failed to read data block of layer archive: %s\n",
+                archive_error_string(reader));
+        return -1;
+    }
+
+    return 0;
+}
+
+static int nsh_layer_extract_archive_entry_single(
+    struct archive *reader, struct archive *writer, struct archive_entry *entry)
+{
+    int retcode;
+    int err;
+
+    retcode = archive_write_header(writer, entry);
+    if (retcode != ARCHIVE_OK) {
+        fprintf(stderr, "[x] Failed to write header of layer archive: %s\n",
+                archive_error_string(writer));
+        return -1;
+    }
+
+    err = nsh_layer_extract_copy_data_blocks(reader, writer);
+    if (err)
+        return -1;
+
+    return 0;
+}
+
+static int nsh_layer_extract_archive_entries(
+    struct archive *reader, struct archive *writer, const char *snapshot_path)
+{
+    struct archive_entry *entry;
+    struct cc_array_s *hardlinks;
+    struct cc_array_s *opaque_whiteouts;
+    enum cc_stat cc_stat;
+    int ret = 0;
+    int retcode;
+    int err;
+
+    cc_stat = cc_array_new(&hardlinks);
+    if (cc_stat != CC_OK) {
+        fprintf(stderr, "[x] Failed to allocate pending hardlinks array\n");
+        ret = -1;
+        goto out;
+    }
+
+    cc_stat = cc_array_new(&opaque_whiteouts);
+    if (cc_stat != CC_OK) {
+        fprintf(stderr, "[x] Failed to allocate pending opaque whiteouts array\n");
+        ret = -1;
+        goto out_destroy_link_arr;
+    }
+
+    while ((retcode = archive_read_next_header(reader, &entry)) == ARCHIVE_OK) {
+        nsh_layer_archive_entry_set_dest(entry, snapshot_path);
+
+        if (!nsh_layer_archive_entry_is_valid(entry)) {
+            fprintf(stderr, "[x] Invalid layer entry found: %s\n",
+                    archive_entry_pathname(entry));
+            ret = -1;
+            goto out_destroy_opq_arr;
+        }
+
+        if (archive_entry_hardlink(entry)) {
+            err = nsh_archive_entry_track(hardlinks, entry);
+            if (err) {
+                ret = -1;
+                goto out_destroy_opq_arr;
+            }
+        }
+        else if (nsh_oci_is_regular_whiteout(archive_entry_pathname(entry))) {
+            err = nsh_whiteout_create(entry);
+            if (err) {
+                ret = -1;
+                goto out_destroy_opq_arr;
+            }
+        }
+        else if (nsh_oci_is_opaque_whiteout(archive_entry_pathname(entry))) {
+            err = nsh_archive_entry_track(opaque_whiteouts, entry);
+            if (err) {
+                ret = -1;
+                goto out_destroy_opq_arr;
+            }
+        }
+        else {
+            err = nsh_layer_extract_archive_entry_single(reader, writer, entry);
+            if (err) {
+                ret = -1;
+                goto out_destroy_opq_arr;
+            }
+        }
+
+        retcode = archive_read_data_skip(reader);
+        if (retcode != ARCHIVE_OK) {
+            fprintf(stderr, "[x] Failed to skip entry in layer archive: %s\n",
+                    archive_error_string(writer));
+            ret = -1;
+            goto out_destroy_opq_arr;
+        }
+    }
+
+    if (retcode != ARCHIVE_EOF) {
+        fprintf(stderr, "[x] Failed to read header of layer archive: %s\n",
+                archive_error_string(reader));
+        ret = -1;
+        goto out_destroy_opq_arr;
+    }
+
+    err = nsh_hardlinks_extract(hardlinks, writer);
+    if (err) {
+        ret = -1;
+        goto out_destroy_opq_arr;
+    }
+
+    err = nsh_opaque_whiteouts_apply(opaque_whiteouts);
+    if (err) {
+        ret = -1;
+        goto out_destroy_opq_arr;
+    }
+
+out_destroy_opq_arr:
+    cc_array_destroy_cb(opaque_whiteouts,
+        (void (*)(void *))archive_entry_free);
+out_destroy_link_arr:
+    cc_array_destroy_cb(hardlinks,
+        (void (*)(void *))archive_entry_free);
+out:
+    return ret;
+}
+
+static int nsh_layer_extract_archive(
+    const char *layer_path, const char *snapshot_path,
+    int format, int filter)
+{
+    struct archive *reader;
+    struct archive *writer;
+    int retcode;
+    int err;
+    int ret = 0;
+
+    reader = archive_read_new();
+    writer = archive_write_disk_new();
+
+    archive_read_support_format_by_code(reader, format);
+    archive_read_support_filter_by_code(reader, filter);
+
+    archive_write_disk_set_options(
+        writer,
+        ARCHIVE_EXTRACT_OWNER   |
+        ARCHIVE_EXTRACT_PERM    |
+        ARCHIVE_EXTRACT_TIME    |
+        ARCHIVE_EXTRACT_ACL     |
+        ARCHIVE_EXTRACT_FFLAGS  |
+        ARCHIVE_EXTRACT_XATTR
+    );
+
+    retcode = archive_read_open_filename(
+        reader, layer_path, NSH_LAYER_EXTRACTION_BLOCK_SIZE);
+    if (retcode != ARCHIVE_OK) {
+        fprintf(stderr, "[x] Failed open layer archive: %s\n",
+                archive_error_string(reader));
+        ret = -1;
+        goto out;
+    }
+
+    err = nsh_layer_extract_archive_entries(reader, writer, snapshot_path);
+    if (err) {
+        ret = -1;
+        goto out;
+    }
+
+out:
+    archive_write_free(writer);
+    archive_read_free(reader);
+    return ret;
+}
+
+static int nsh_layer_extract_single(const char *image_path, int snapshots_dir_fd,
+    image_spec_schema_content_descriptor *layer_descriptor)
+{
+    char layer_path[PATH_MAX];
+    char snapshot_path[PATH_MAX];
+    int format;
+    int filter;
+    int err;
+
+    err = mkdirat(snapshots_dir_fd, layer_descriptor->digest, S_IRWXU);
+    if (err) {
+        perror("[x] Failed to create snapshot directory");
+        return -1;
+    }
+
+    err = nsh_oci_digest_to_path(image_path, layer_descriptor->digest,
+                                 layer_path, sizeof(layer_path));
+    if (err) {
+        fprintf(stderr, "[x] Failed to resolve layer blob path by digest\n");
+        return -1;
+    }
+
+    err = nsh_layer_digest_to_snapshot_path(snapshots_dir_fd, layer_descriptor->digest,
+                                            snapshot_path, sizeof(snapshot_path));
+    if (err) {
+        fprintf(stderr, "[x] Failed to resolve snapshot path by digest\n");
+        return -1;
+    }
+
+    format = nsh_layer_media_type_to_format(layer_descriptor->media_type);
+    filter = nsh_layer_media_type_to_filter(layer_descriptor->media_type);
+
+    if (format == -1 || filter == -1) {
+        fprintf(stderr, "[x] Unsupported layer media type: %s\n",
+                layer_descriptor->media_type);
+        return -1;
+    }
+
+    err = nsh_layer_extract_archive(layer_path, snapshot_path, format, filter);
+    if (err)
+        return -1;
+
+    return 0;
+}
+
+int nsh_layers_extract(
+    image_spec_schema_image_manifest_schema *manifest,
+    const char *image_path,
+    int workdir_fd)
+{
+    image_spec_schema_content_descriptor *layer_descriptor;
+    int snapshots_dir_fd;
+    int ret = 0;
+    int err;
+
+    snapshots_dir_fd = openat(workdir_fd,
+        NSH_FS_WORKDIR_OVERLAY_SNAPSHOTS, O_RDONLY | O_DIRECTORY);
+
+    if (snapshots_dir_fd == -1) {
+        perror("[x] Failed to open snapshots directory");
+        ret = -1;
+        goto out;
+    }
+
+    for (size_t i = 0; i < manifest->layers_len; i++) {
+        layer_descriptor = manifest->layers[i];
+
+        err = nsh_layer_extract_single(
+            image_path, snapshots_dir_fd, layer_descriptor);
+
+        if (err) {
+            ret = -1;
+            goto out_close_snapshots_dir;
+        }
+    }
+
+out_close_snapshots_dir:
+    err = close(snapshots_dir_fd);
+    if (err) {
+        perror("[x] Failed to close snapshots directory");
+        ret = -1;
+    }
+out:
+    return ret;
+}

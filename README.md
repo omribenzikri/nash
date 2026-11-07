@@ -13,3 +13,5 @@ Linux container engine POC in the works, capable of:
 * `libocispec`
 * `libsodium`
 * `libblake3`
+* `libarchive`
+* `libcollectc`
