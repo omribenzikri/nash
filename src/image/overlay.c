@@ -128,6 +128,25 @@ static int nsh_workdir_set(int fsfd, const char *workspace_path)
     return 0;
 }
 
+static int nsh_overlay_features_enable(int fsfd)
+{
+    int err;
+
+    err = fsconfig(fsfd, FSCONFIG_SET_STRING, "redirect_dir", "on", 0);
+    if (err) {
+        perror("[x] Failed to configure \"redirect_dir\" feature");
+        return -1;
+    }
+
+    err = fsconfig(fsfd, FSCONFIG_SET_STRING, "index", "on", 0);
+    if (err) {
+        perror("[x] Failed to configure \"index\" feature");
+        return -1;
+    }
+
+    return 0;
+}
+
 static int nsh_overlay_config(int fsfd,
     image_spec_schema_image_manifest_schema *manifest,
     const char *workspace_path)
@@ -145,6 +164,10 @@ static int nsh_overlay_config(int fsfd,
         return -1;
 
     err = nsh_workdir_set(fsfd, workspace_path);
+    if (err)
+        return -1;
+
+    err = nsh_overlay_features_enable(fsfd);
     if (err)
         return -1;
 
