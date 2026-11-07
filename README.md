@@ -13,6 +13,7 @@ Linux container engine POC in the works.
 #### Image
 1. Parsing OCI image metadata
 2. Unpacking layers in order, and applying whiteouts
+3. Merging layers via overlayfs mount
 
 #### Dependencies
 * `libuuid`
