@@ -1,5 +1,5 @@
-#ifndef _NASH_CONTAINER_H
-#define _NASH_CONTAINER_H
+#ifndef _NASH_ENGINE_CONTAINER_H
+#define _NASH_ENGINE_CONTAINER_H
 
 #include <limits.h>
 #include <sys/types.h>

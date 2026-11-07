@@ -5,7 +5,7 @@
 #include <getopt.h>
 #include <inttypes.h>
 #include <sys/wait.h>
-#include "container.h"
+#include "engine/container.h"
 #include "startup.h"
 
 static const struct option nsh_options[] = {
