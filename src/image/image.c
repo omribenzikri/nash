@@ -4,10 +4,12 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/mount.h>
 #include <linux/limits.h>
 #include "common/constants.h"
 #include "image/oci.h"
 #include "image/layer.h"
+#include "image/overlay.h"
 #include "image/image.h"
 
 struct nsh_image {
@@ -105,8 +107,11 @@ int nsh_image_rootfs_prepare(
         goto out_close_workdir;
     }
 
-    (void)path;
-    (void)size;
+    err = nsh_overlay_create(image->oci.manifest, workdir_path, path, size);
+    if (err) {
+        ret = -1;
+        goto out_close_workdir;
+    }
 
 out_close_workdir:
     err = close(workdir_fd);
@@ -116,4 +121,17 @@ out_close_workdir:
     }
 out:
     return ret;
+}
+
+int nsh_image_rootfs_destroy(const char *path)
+{
+    int err;
+
+    err = umount(path);
+    if (err) {
+        perror("[x] Failed to unmount container rootfs");
+        return -1;
+    }
+
+    return 0;
 }

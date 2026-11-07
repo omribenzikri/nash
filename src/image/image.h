@@ -11,5 +11,6 @@ void nsh_image_free(nsh_image_t *image);
 int nsh_image_rootfs_prepare(
     nsh_image_t *image, const char *workdir_path,
     char *path, size_t size);
+int nsh_image_rootfs_destroy(const char *path);
 
 #endif

@@ -79,7 +79,6 @@ static int nsh_runtime_config_init(nsh_container_t *container,
         return -1;
     }
 
-    runtime_config->rootfs_path = user_config->image_path;
     runtime_config->exec_path = user_config->exec_path;
     runtime_config->exec_argv = user_config->exec_argv;
     runtime_config->exec_envp = user_config->exec_envp;
@@ -102,10 +101,23 @@ static int nsh_container_init_rootfs(nsh_container_t *container, nsh_image_t *im
                                    rootfs_path, sizeof(rootfs_path));
     if (err) {
         fprintf(stderr, "[x] Failed to prepare container rootfs\n");
-        return -1;
+        goto error;
+    }
+
+    container->runtime_config.rootfs_path =
+        strndup(rootfs_path, sizeof(rootfs_path));
+
+    if (container->runtime_config.rootfs_path == NULL) {
+        perror("[x] Failed to allocate container rootfs path");
+        goto error_destroy_rootfs;
     }
 
     return 0;
+
+error_destroy_rootfs:
+    nsh_image_rootfs_destroy(rootfs_path);
+error:
+    return -1;
 }
 
 static int nsh_container_init_image_related(nsh_container_t *container, const char *image_path)
@@ -147,7 +159,7 @@ static int nsh_container_init(nsh_container_t *container,
         goto error_delete_workspace;
 
     // Temporary image location
-    err = nsh_container_init_image_related(container, "images/oci/alpine");
+    err = nsh_container_init_image_related(container, user_config->image_path);
     if (err)
         goto error_free_config;
 
@@ -163,6 +175,7 @@ error:
 
 static void nsh_container_destroy(nsh_container_t *container)
 {
+    nsh_image_rootfs_destroy(container->runtime_config.rootfs_path);
     nsh_runtime_config_destroy(&container->runtime_config);
     nsh_container_workspace_delete(container);
 }
