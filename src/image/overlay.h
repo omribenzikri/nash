@@ -5,6 +5,7 @@
 #include <sys/sysmacros.h>
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
 
+#define OVERLAYFS_NAME "overlay"
 #define OVERLAYFS_WHITEOUT_DEV makedev(0, 0)
 #define OVERLAYFS_WHITEOUT_XATTR "trusted.overlay.whiteout"
 #define OVERLAYFS_OPAQUE_XATTR "trusted.overlay.opaque"

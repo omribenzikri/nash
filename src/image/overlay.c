@@ -1,7 +1,10 @@
 #include <stdio.h>
 #include <stddef.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/xattr.h>
+#include <sys/mount.h>
+#include <linux/mount.h>
 #include <linux/limits.h>
 #include "common/constants.h"
 #include "utils/filesystem.h"
@@ -68,12 +71,17 @@ static int nsh_lowerdir_add(int fsfd,
     const char *workspace_path, const char *layer_digest)
 {
     char path[PATH_MAX];
+    int err;
 
     nsh_resolve_lowerdir_path(
         workspace_path, layer_digest,
         path, sizeof(path));
 
-    (void)fsfd;
+    err = fsconfig(fsfd, FSCONFIG_SET_STRING, "lowerdir+", path, 0);
+    if (err) {
+        perror("[x] Failed to configure lowerdir");
+        return -1;
+    }
 
     return 0;
 }
@@ -81,10 +89,15 @@ static int nsh_lowerdir_add(int fsfd,
 static int nsh_upperdir_set(int fsfd, const char *workspace_path)
 {
     char path[PATH_MAX];
+    int err;
 
     nsh_resolve_upperdir_path(workspace_path, path, sizeof(path));
 
-    (void)fsfd;
+    err = fsconfig(fsfd, FSCONFIG_SET_STRING, "upperdir", path, 0);
+    if (err) {
+        perror("[x] Failed to configure upperdir");
+        return -1;
+    }
 
     return 0;
 }
@@ -92,10 +105,15 @@ static int nsh_upperdir_set(int fsfd, const char *workspace_path)
 static int nsh_workdir_set(int fsfd, const char *workspace_path)
 {
     char path[PATH_MAX];
+    int err;
 
     nsh_resolve_workdir_path(workspace_path, path, sizeof(path));
 
-    (void)fsfd;
+    err = fsconfig(fsfd, FSCONFIG_SET_STRING, "workdir", path, 0);
+    if (err) {
+        perror("[x] Failed to configure workdir");
+        return -1;
+    }
 
     return 0;
 }
@@ -128,8 +146,31 @@ int nsh_overlay_create(
     const char *workspace_path,
     char *rootfs_path, size_t size)
 {
-    nsh_overlay_config(0, manifest, workspace_path);
+    int fsfd;
+    int ret = 0;
+    int err;
+
+    fsfd = fsopen(OVERLAYFS_NAME, 0);
+    if (fsfd == -1) {
+        perror("[x] Failed to open filesystem context");
+        ret = -1;
+        goto out;
+    }
+
+    err = nsh_overlay_config(fsfd, manifest, workspace_path);
+    if (err) {
+        ret = -1;
+        goto out_close_fsfd;
+    }
+
     nsh_resolve_rootfs_path(workspace_path, rootfs_path, size);
 
-    return 0;
+out_close_fsfd:
+    err = close(fsfd);
+    if (err) {
+        perror("[x] Failed to close filesystem context");
+        ret = -1;
+    }
+out:
+    return ret;
 }
