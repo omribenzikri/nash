@@ -14,11 +14,20 @@
 int nsh_overlay_whiteout_create(const char *path)
 {
     int err;
+    char dir_name[PATH_MAX];
+
+    split_path(path, dir_name, sizeof(dir_name), NULL, 0);
 
     err = create_with_xattr(path, S_IRUSR,
         OVERLAYFS_WHITEOUT_XATTR, "y", 1, 0);
     if (err) {
         perror("[x] Failed to create whiteout");
+        return -1;
+    }
+
+    err = setxattr(dir_name, OVERLAYFS_OPAQUE_XATTR, "x", 1, 0);
+    if (err) {
+        perror("[x] Failed to set opaque xattr");
         return -1;
     }
 
