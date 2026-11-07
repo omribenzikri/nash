@@ -7,7 +7,7 @@
 #include <linux/limits.h>
 #include "common/constants.h"
 #include "image/oci.h"
-#include "image/rootfs.h"
+#include "image/layer.h"
 #include "image/image.h"
 
 struct nsh_image {
@@ -99,7 +99,7 @@ int nsh_image_rootfs_prepare(
         goto out_close_workdir;
     }
 
-    err = nsh_image_layers_extract(image->oci.manifest, image->path, workdir_fd);
+    err = nsh_layers_extract(image->oci.manifest, image->path, workdir_fd);
     if (err) {
         ret = -1;
         goto out_close_workdir;

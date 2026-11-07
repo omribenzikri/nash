@@ -18,7 +18,7 @@
 #include "utils/archive.h"
 #include "image/oci.h"
 #include "image/overlay.h"
-#include "image/rootfs.h"
+#include "image/layer.h"
 
 #define NSH_LAYER_EXTRACTION_BLOCK_SIZE 10240
 
@@ -448,7 +448,7 @@ static int nsh_layer_extract_single(const char *image_path, int snapshots_dir_fd
     return 0;
 }
 
-int nsh_image_layers_extract(
+int nsh_layers_extract(
     image_spec_schema_image_manifest_schema *manifest,
     const char *image_path,
     int workdir_fd)
