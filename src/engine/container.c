@@ -150,6 +150,8 @@ static int nsh_container_init(nsh_container_t *container,
 {
     int err;
 
+    uuid_generate_random(container->id);
+
     err = nsh_container_workspace_create(container);
     if (err)
         goto error;
@@ -158,7 +160,6 @@ static int nsh_container_init(nsh_container_t *container,
     if (err)
         goto error_delete_workspace;
 
-    // Temporary image location
     err = nsh_container_init_image_related(container, user_config->image_path);
     if (err)
         goto error_free_config;
@@ -180,31 +181,39 @@ static void nsh_container_destroy(nsh_container_t *container)
     nsh_container_workspace_delete(container);
 }
 
-int nsh_container_create(nsh_container_config_t *config, nsh_container_t *out)
+nsh_container_t *nsh_engine_container_create(nsh_container_config_t *config)
 {
+    nsh_container_t *container;
     int err;
 
-    memset(out, 0, sizeof(*out));
-    uuid_generate_random(out->id);
-
-    err = nsh_container_init(out, config);
-    if (err)
+    container = calloc(1, sizeof(*container));
+    if (container == NULL) {
+        perror("[x] Failed to allocate container");
         goto error;
+    }
 
-    out->pid = nsh_runtime_container_create(out->id, &out->runtime_config);
-    if (out->pid == -1)
+    err = nsh_container_init(container, config);
+    if (err)
+        goto error_free_container;
+
+    container->pid = nsh_runtime_container_create(
+        container->id, &container->runtime_config);
+    if (container->pid == -1)
         goto error_destroy_container;
 
-    return 0;
+    return container;
 
 error_destroy_container:
-    nsh_container_destroy(out);
+    nsh_container_destroy(container);
+error_free_container:
+    free(container);
 error:
-    return -1;
+    return NULL;
 }
 
-void nsh_container_delete(nsh_container_t *container)
+void nsh_engine_container_delete(nsh_container_t *container)
 {
     nsh_runtime_container_cleanup(container->id);
     nsh_container_destroy(container);
+    free(container);
 }

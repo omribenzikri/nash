@@ -5,7 +5,7 @@
 #include <getopt.h>
 #include <inttypes.h>
 #include <sys/wait.h>
-#include "engine/container.h"
+#include "resources/container.h"
 #include "startup.h"
 
 static const struct option nsh_options[] = {
@@ -77,7 +77,7 @@ static int nsh_parse_options(int argc, char **argv, nsh_container_config_t *conf
 int main(int argc, char **argv)
 {
     nsh_container_config_t config = {0};
-    nsh_container_t container = {0};
+    nsh_container_t *container;
     char *envp[] = {NULL};
     bool system_compat;
     int err;
@@ -114,12 +114,12 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    if (waitpid(container.pid, NULL, 0) == -1) {
+    if (waitpid(container->pid, NULL, 0) == -1) {
         perror("[x] Awaiting child failed");
         return EXIT_FAILURE;
     }
 
-    nsh_container_delete(&container);
+    nsh_container_delete(container);
 
     return EXIT_SUCCESS;
 }

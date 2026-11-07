@@ -24,7 +24,7 @@ typedef struct {
     nsh_resources_t resources;
 } nsh_container_config_t;
 
-int nsh_container_create(nsh_container_config_t *config, nsh_container_t *out);
-void nsh_container_delete(nsh_container_t *container);
+nsh_container_t *nsh_engine_container_create(nsh_container_config_t *config);
+void nsh_engine_container_delete(nsh_container_t *container);
 
 #endif
