@@ -3,7 +3,7 @@
 
 #include "engine/container.h"
 
-int nsh_container_create(nsh_container_config_t *config, nsh_container_t **out);
+int nsh_container_create(nsh_container_params_t *params, nsh_container_t **out);
 void nsh_container_delete(nsh_container_t *container);
 
 #endif
