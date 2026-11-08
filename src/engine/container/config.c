@@ -12,7 +12,7 @@ typedef struct {
     nsh_container_config_t *image_config;
 } nsh_runtime_config_sources_t;
 
-static int nsh_runtime_config_init_rootfs_path(
+static int nsh_runtime_config_rootfs_path_init(
     nsh_runtime_config_t *config, const char *rootfs_path)
 {
     assert(rootfs_path != NULL);
@@ -26,15 +26,15 @@ static int nsh_runtime_config_init_rootfs_path(
     return 0;
 }
 
-static int nsh_runtime_config_init_hostname(
-    nsh_runtime_config_t *config, nsh_container_params_t *params)
+static int nsh_runtime_config_hostname_init(
+    nsh_runtime_config_t *config, nsh_runtime_config_sources_t *sources)
 {
-    if (params->hostname == NULL) {
+    if (sources->user_params->hostname == NULL) {
         config->hostname = NULL;
         return 0;
     }
 
-    config->hostname = strndup(params->hostname, PATH_MAX);
+    config->hostname = strndup(sources->user_params->hostname, PATH_MAX);
     if (config->hostname == NULL) {
         perror("[x] Failed to allocate hostname");
         return -1;
@@ -43,24 +43,30 @@ static int nsh_runtime_config_init_hostname(
     return 0;
 }
 
-static int nsh_runtime_config_init_working_directory(
-    nsh_runtime_config_t *config, nsh_runtime_config_sources_t *sources)
+static void nsh_runtime_config_cwd_pick(
+    nsh_runtime_config_sources_t *sources, const char **out)
 {
-    const char *wd;
-
     if (sources->user_params->config.working_dir != NULL) {
-        wd = sources->user_params->config.working_dir;
+        *out = sources->user_params->config.working_dir;
     }
     else if (sources->image_config->working_dir != NULL) {
-        wd = sources->image_config->working_dir;
+        *out = sources->image_config->working_dir;
     }
     else {
-        wd = NSH_DEFAULT_WORKING_DIRECTORY;
+        *out = NSH_DEFAULT_WORKING_DIRECTORY;
     }
+}
 
-    config->working_directory = strndup(wd, PATH_MAX);
-    if (config->working_directory == NULL) {
-        perror("[x] Failed to allocate working directory");
+static int nsh_runtime_config_cwd_init(
+    nsh_runtime_config_t *config, nsh_runtime_config_sources_t *sources)
+{
+    const char *cwd;
+
+    nsh_runtime_config_cwd_pick(sources, &cwd);
+
+    config->cwd = strndup(cwd, PATH_MAX);
+    if (config->cwd == NULL) {
+        perror("[x] Failed to allocate cwd");
         return -1;
     }
 
@@ -132,36 +138,36 @@ static int nsh_runtime_config_init_exec_envp(
 }
 
 int nsh_runtime_config_init(
-    nsh_runtime_config_t *config, nsh_container_params_t *params,
+    nsh_runtime_config_t *config, nsh_container_params_t *user_params,
     nsh_container_config_t *image_config, const char *rootfs_path)
 {
-    nsh_runtime_config_sources_t sources;
+    nsh_runtime_config_sources_t sources = {
+        .user_params = user_params,
+        .image_config = image_config
+    };
     int err;
 
-    sources.user_params = params;
-    sources.image_config = image_config;
-
-    err = nsh_runtime_config_init_rootfs_path(config, rootfs_path);
+    err = nsh_runtime_config_rootfs_path_init(config, rootfs_path);
     if (err)
         goto error;
 
-    err = nsh_runtime_config_init_hostname(config, params);
+    err = nsh_runtime_config_hostname_init(config, &sources);
     if (err)
         goto error_free_rootfs_path;
 
-    err = nsh_runtime_config_init_exec_path(config, params);
+    err = nsh_runtime_config_init_exec_path(config, user_params);
     if (err)
         goto error_free_hostname;
 
-    err = nsh_runtime_config_init_exec_argv(config, params);
+    err = nsh_runtime_config_init_exec_argv(config, user_params);
     if (err)
         goto error_free_exec_path;
 
-    err = nsh_runtime_config_init_exec_envp(config, params);
+    err = nsh_runtime_config_init_exec_envp(config, user_params);
     if (err)
         goto error_free_exec_argv;
 
-    err = nsh_runtime_config_init_working_directory(config, &sources);
+    err = nsh_runtime_config_cwd_init(config, &sources);
     if (err)
         goto error_free_exec_envp;
 
@@ -183,7 +189,7 @@ error:
 
 void nsh_runtime_config_destroy(nsh_runtime_config_t *config)
 {
-    free(config->working_directory);
+    free(config->cwd);
     free(config->exec_envp);
     free(config->exec_argv);
     free(config->exec_path);

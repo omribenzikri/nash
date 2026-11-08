@@ -136,7 +136,7 @@ int nsh_image_rootfs_destroy(const char *path)
     return 0;
 }
 
-char *nsh_image_config_get_working_dir(nsh_image_t *image)
+char *nsh_image_config_working_dir(nsh_image_t *image)
 {
     return image->oci.config->config->working_dir;
 }

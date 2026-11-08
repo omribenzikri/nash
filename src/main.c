@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <limits.h>
 #include <errno.h>
 #include <getopt.h>
 #include <inttypes.h>
@@ -12,7 +13,8 @@
 #include "startup.h"
 
 static const struct option nsh_options[] = {
-    { "workdir" ,    required_argument, NULL, 'w' },
+    { "hostname",    required_argument, NULL, 'h' },
+    { "workdir",     required_argument, NULL, 'w' },
     { "cpu-time",    required_argument, NULL, 'c' },
     { "procs",       required_argument, NULL, 'p' },
     { "memory",      required_argument, NULL, 'm' },
@@ -45,6 +47,12 @@ static int nsh_parse_options(int argc, char **argv, nsh_container_params_t *para
 
     while ((opt = getopt_long(argc, argv, "", nsh_options, NULL)) != -1) {
         switch (opt) {
+        case 'h':
+            if (strlen(optarg) > HOST_NAME_MAX)
+                return -1;
+
+            params->hostname = optarg;
+            break;
         case 'w':
             if (strlen(optarg) > PATH_MAX)
                 return -1;

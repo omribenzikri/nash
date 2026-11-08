@@ -26,7 +26,7 @@ typedef struct {
 
 int nsh_runtime_config_init(
     nsh_runtime_config_t *config,
-    nsh_container_params_t *params,
+    nsh_container_params_t *user_params,
     nsh_container_config_t *image_config,
     const char *rootfs_path
 );

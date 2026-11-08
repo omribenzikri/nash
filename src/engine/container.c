@@ -23,7 +23,7 @@ static void nsh_resolve_container_workdir_path(
 static void nsh_load_image_config(
     nsh_image_t *image, nsh_container_config_t *config)
 {
-    config->working_dir = nsh_image_config_get_working_dir(image);
+    config->working_dir = nsh_image_config_working_dir(image);
 }
 
 static int nsh_container_init_internal(

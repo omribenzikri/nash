@@ -13,6 +13,6 @@ int nsh_image_rootfs_prepare(
     char *path, size_t size);
 int nsh_image_rootfs_destroy(const char *path);
 
-char *nsh_image_config_get_working_dir(nsh_image_t *image);
+char *nsh_image_config_working_dir(nsh_image_t *image);
 
 #endif
