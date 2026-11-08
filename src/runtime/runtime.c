@@ -61,7 +61,8 @@ static void nsh_container_startup(uuid_t id, nsh_runtime_config_t *config)
 
     umask(0);
 
-    err = nsh_fs_pivot_root(config->rootfs_path);
+    err = nsh_fs_pivot_root(config->rootfs_path,
+                            config->working_directory);
     if (err)
         exit(EXIT_FAILURE);
 

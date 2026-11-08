@@ -6,8 +6,9 @@
 #include "runtime/resources.h"
 
 typedef struct {
-    char *hostname;
     char *rootfs_path;
+    char *hostname;
+    char *working_directory;
     char *exec_path;
     char **exec_argv;
     char **exec_envp;

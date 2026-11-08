@@ -7,6 +7,11 @@
 #include "runtime/runtime.h"
 #include "engine/container/config.h"
 
+typedef struct {
+    nsh_container_params_t *user_params;
+    nsh_container_config_t *image_config;
+} nsh_runtime_config_sources_t;
+
 static int nsh_runtime_config_init_rootfs_path(
     nsh_runtime_config_t *config, const char *rootfs_path)
 {
@@ -32,6 +37,30 @@ static int nsh_runtime_config_init_hostname(
     config->hostname = strndup(params->hostname, PATH_MAX);
     if (config->hostname == NULL) {
         perror("[x] Failed to allocate hostname");
+        return -1;
+    }
+
+    return 0;
+}
+
+static int nsh_runtime_config_init_working_directory(
+    nsh_runtime_config_t *config, nsh_runtime_config_sources_t *sources)
+{
+    const char *wd;
+
+    if (sources->user_params->config.working_dir != NULL) {
+        wd = sources->user_params->config.working_dir;
+    }
+    else if (sources->image_config->working_dir != NULL) {
+        wd = sources->image_config->working_dir;
+    }
+    else {
+        wd = NSH_DEFAULT_WORKING_DIRECTORY;
+    }
+
+    config->working_directory = strndup(wd, PATH_MAX);
+    if (config->working_directory == NULL) {
+        perror("[x] Failed to allocate working directory");
         return -1;
     }
 
@@ -104,9 +133,13 @@ static int nsh_runtime_config_init_exec_envp(
 
 int nsh_runtime_config_init(
     nsh_runtime_config_t *config, nsh_container_params_t *params,
-    const char *rootfs_path)
+    nsh_container_config_t *image_config, const char *rootfs_path)
 {
+    nsh_runtime_config_sources_t sources;
     int err;
+
+    sources.user_params = params;
+    sources.image_config = image_config;
 
     err = nsh_runtime_config_init_rootfs_path(config, rootfs_path);
     if (err)
@@ -128,8 +161,14 @@ int nsh_runtime_config_init(
     if (err)
         goto error_free_exec_argv;
 
+    err = nsh_runtime_config_init_working_directory(config, &sources);
+    if (err)
+        goto error_free_exec_envp;
+
     return 0;
 
+error_free_exec_envp:
+    free(config->exec_envp);
 error_free_exec_argv:
     free(config->exec_argv);
 error_free_exec_path:
@@ -144,6 +183,7 @@ error:
 
 void nsh_runtime_config_destroy(nsh_runtime_config_t *config)
 {
+    free(config->working_directory);
     free(config->exec_envp);
     free(config->exec_argv);
     free(config->exec_path);

@@ -20,11 +20,18 @@ static void nsh_resolve_container_workdir_path(
     snprintf(buf, size, "%s/%s", NSH_WORKDIR_CONTAINERS, uuid_string);
 }
 
+static void nsh_load_image_config(
+    nsh_image_t *image, nsh_container_config_t *config)
+{
+    config->working_dir = nsh_image_config_get_working_dir(image);
+}
+
 static int nsh_container_init_internal(
     nsh_container_t *container, nsh_image_t *image,
     nsh_container_params_t *params)
 {
     char rootfs_path[PATH_MAX];
+    nsh_container_config_t image_config;
     int err;
 
     uuid_generate_random(container->id);
@@ -41,7 +48,10 @@ static int nsh_container_init_internal(
     if (err)
         goto error_delete_workdir;
 
-    err = nsh_runtime_config_init(&container->runtime_config, params, rootfs_path);
+    nsh_load_image_config(image, &image_config);
+
+    err = nsh_runtime_config_init(
+        &container->runtime_config, params, &image_config, rootfs_path);
     if (err)
         goto error_destroy_rootfs;
 

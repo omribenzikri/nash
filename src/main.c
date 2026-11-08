@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 #include <errno.h>
 #include <getopt.h>
 #include <inttypes.h>
@@ -11,6 +12,7 @@
 #include "startup.h"
 
 static const struct option nsh_options[] = {
+    { "workdir" ,    required_argument, NULL, 'w' },
     { "cpu-time",    required_argument, NULL, 'c' },
     { "procs",       required_argument, NULL, 'p' },
     { "memory",      required_argument, NULL, 'm' },
@@ -43,13 +45,19 @@ static int nsh_parse_options(int argc, char **argv, nsh_container_params_t *para
 
     while ((opt = getopt_long(argc, argv, "", nsh_options, NULL)) != -1) {
         switch (opt) {
+        case 'w':
+            if (strlen(optarg) > PATH_MAX)
+                return -1;
+
+            params->config.working_dir = optarg;
+            break;
         case 'c':
             err = nsh_parse_uint(optarg, UINT8_MAX,
                                 (uintmax_t *)&params->resources.cpu_time);
             if (err ||params->resources.cpu_time == 0
                     || params->resources.cpu_time > 100)
                 return -1;
-        break;
+            break;
         case 'p':
             err = nsh_parse_uint(optarg, UINT32_MAX,
                                 (uintmax_t *)&params->resources.procs);

@@ -5,6 +5,8 @@
 #include "runtime/resources.h"
 #include "utils/macros.h"
 
+#define NSH_DEFAULT_WORKING_DIRECTORY "/"
+
 // Not all image config parameters are here,
 // just the ones that are currently supported.
 typedef struct {
@@ -23,8 +25,11 @@ typedef struct {
 } nsh_container_params_t;
 
 int nsh_runtime_config_init(
-    nsh_runtime_config_t *config, nsh_container_params_t *params,
-    const char *rootfs_path);
+    nsh_runtime_config_t *config,
+    nsh_container_params_t *params,
+    nsh_container_config_t *image_config,
+    const char *rootfs_path
+);
 void nsh_runtime_config_destroy(nsh_runtime_config_t *config);
 
 #endif
