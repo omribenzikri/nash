@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stddef.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -139,4 +140,24 @@ int nsh_image_rootfs_destroy(const char *path)
 char *nsh_image_config_working_dir(nsh_image_t *image)
 {
     return image->oci.config->config->working_dir;
+}
+
+char **nsh_image_config_entrypoint(nsh_image_t *image)
+{
+    return image->oci.config->config->entrypoint;
+}
+
+size_t nsh_image_config_entrypoint_len(nsh_image_t *image)
+{
+    return image->oci.config->config->entrypoint_len;
+}
+
+char **nsh_image_config_cmd(nsh_image_t *image)
+{
+    return image->oci.config->config->cmd;
+}
+
+size_t nsh_image_config_cmd_len(nsh_image_t *image)
+{
+    return image->oci.config->config->cmd_len;
 }

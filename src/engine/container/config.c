@@ -4,6 +4,10 @@
 #include <string.h>
 #include <assert.h>
 #include <linux/limits.h>
+#include <collectc/cc_common.h>
+#include <collectc/cc_array.h>
+#include "utils/array.h"
+#include "utils/macros.h"
 #include "runtime/runtime.h"
 #include "engine/container/config.h"
 
@@ -73,12 +77,68 @@ static int nsh_runtime_config_cwd_init(
     return 0;
 }
 
-static int nsh_runtime_config_init_exec_path(
-    nsh_runtime_config_t *config, nsh_container_params_t *params)
+static void nsh_runtime_config_entrypoint_pick(
+    nsh_runtime_config_sources_t *sources, char ***outv, size_t *outc)
 {
-    assert(params->config.entrypoint[0] != NULL);
+    if (sources->user_params->config.entrypoint_len > 0) {
+        *outv = sources->user_params->config.entrypoint;
+        *outc = sources->user_params->config.entrypoint_len;
+    }
+    else if (sources->image_config->entrypoint_len > 0) {
+        *outv = sources->image_config->entrypoint;
+        *outc = sources->image_config->entrypoint_len;
+    }
+    else {
+        *outv = NULL;
+        *outc = 0;
+    }
+}
 
-    config->exec_path = strndup(params->config.entrypoint[0], PATH_MAX);
+static void nsh_runtime_config_cmd_pick(
+    nsh_runtime_config_sources_t *sources, char ***outv, size_t *outc)
+{
+    if (sources->user_params->config.cmd_len > 0) {
+        *outv = sources->user_params->config.cmd;
+        *outc = sources->user_params->config.cmd_len;
+    }
+    else if (sources->image_config->cmd_len > 0) {
+        *outv = sources->image_config->cmd;
+        *outc = sources->image_config->cmd_len;
+    }
+    else {
+        *outv = NULL;
+        *outc = 0;
+    }
+}
+
+static void nsh_runtime_config_exec_path_pick(
+    nsh_runtime_config_sources_t *sources, const char **out)
+{
+    ARRAY_WITH_LEN(char *, entrypoint);
+    ARRAY_WITH_LEN(char *, cmd);
+
+    nsh_runtime_config_entrypoint_pick(sources, &entrypoint, &entrypoint_len);
+    nsh_runtime_config_cmd_pick(sources, &cmd, &cmd_len);
+
+    if (entrypoint == NULL)
+        *out = cmd != NULL ? cmd[0] : NULL;
+    else
+        *out = entrypoint[0];
+}
+
+static int nsh_runtime_config_exec_path_init(
+    nsh_runtime_config_t *config, nsh_runtime_config_sources_t *sources)
+{
+    const char *exec_path = NULL;
+
+    nsh_runtime_config_exec_path_pick(sources, &exec_path);
+
+    if (exec_path == NULL) {
+        fprintf(stderr, "[x] Container executable path missing\n");
+        return -1;
+    }
+
+    config->exec_path = strndup(exec_path, PATH_MAX);
     if (config->exec_path == NULL) {
         perror("[x] Failed to allocate exec path");
         return -1;
@@ -87,31 +147,42 @@ static int nsh_runtime_config_init_exec_path(
     return 0;
 }
 
-static int nsh_runtime_config_init_exec_argv(
-    nsh_runtime_config_t *config, nsh_container_params_t *params)
+static int nsh_runtime_config_exec_argv_init(
+    nsh_runtime_config_t *config, nsh_runtime_config_sources_t *sources)
 {
-    char **exec_argv;
-    size_t exec_argv_len;
+    ARRAY_WITH_LEN(char *, entrypoint);
+    ARRAY_WITH_LEN(char *, cmd);
+    struct cc_array_s *args;
+    enum cc_stat cc_stat;
 
-    exec_argv_len = params->config.entrypoint_len +
-                    params->config.cmd_len;
-
-    exec_argv = calloc(exec_argv_len + 1, sizeof(*exec_argv));
-    if (exec_argv == NULL) {
-        perror("[x] Failed to allocate exec argv");
-        return -1;
+    cc_stat = cc_array_new(&args);
+    if (cc_stat != CC_OK) {
+        fprintf(stderr, "[x] Failed to allocate args dynarray\n");
+        goto error;
     }
 
-    for (size_t i = 0; i < params->config.entrypoint_len; i++)
-        exec_argv[i] = params->config.entrypoint[i];
+    nsh_runtime_config_entrypoint_pick(sources, &entrypoint, &entrypoint_len);
+    nsh_runtime_config_cmd_pick(sources, &cmd, &cmd_len);
 
-    for (size_t i = 0; i < params->config.cmd_len; i++)
-        exec_argv[i + params->config.entrypoint_len] = params->config.cmd[i];
+    cc_stat = cc_array_extend_strings(args, entrypoint, entrypoint_len);
+    if (cc_stat != CC_OK)
+        goto error_destroy_args;
 
-    exec_argv[exec_argv_len] = NULL;
-    config->exec_argv = exec_argv;
+    cc_stat = cc_array_extend_strings(args, cmd, cmd_len);
+    if (cc_stat != CC_OK)
+        goto error_destroy_args;
 
+    cc_stat = cc_array_to_static_shallow(args, (void ***)&config->exec_argv);
+    if (cc_stat != CC_OK)
+        goto error_destroy_args;
+
+    cc_array_destroy(args);
     return 0;
+
+error_destroy_args:
+    cc_array_destroy_cb(args, free);
+error:
+    return -1;
 }
 
 static int nsh_runtime_config_init_exec_envp(
@@ -155,11 +226,11 @@ int nsh_runtime_config_init(
     if (err)
         goto error_free_rootfs_path;
 
-    err = nsh_runtime_config_init_exec_path(config, user_params);
+    err = nsh_runtime_config_exec_path_init(config, &sources);
     if (err)
         goto error_free_hostname;
 
-    err = nsh_runtime_config_init_exec_argv(config, user_params);
+    err = nsh_runtime_config_exec_argv_init(config, &sources);
     if (err)
         goto error_free_exec_path;
 
@@ -176,6 +247,7 @@ int nsh_runtime_config_init(
 error_free_exec_envp:
     free(config->exec_envp);
 error_free_exec_argv:
+    ARRAY_ITESM_FREE(config->exec_argv);
     free(config->exec_argv);
 error_free_exec_path:
     free(config->exec_path);

@@ -14,6 +14,7 @@
 
 static const struct option nsh_options[] = {
     { "hostname",    required_argument, NULL, 'h' },
+    { "entrypoint",  required_argument, NULL, 'e' },
     { "workdir",     required_argument, NULL, 'w' },
     { "cpu-time",    required_argument, NULL, 'c' },
     { "procs",       required_argument, NULL, 'p' },
@@ -45,6 +46,8 @@ static int nsh_parse_options(int argc, char **argv, nsh_container_params_t *para
     int opt;
     int err;
 
+    static char *entrypoint = NULL;
+
     while ((opt = getopt_long(argc, argv, "", nsh_options, NULL)) != -1) {
         switch (opt) {
         case 'h':
@@ -52,6 +55,12 @@ static int nsh_parse_options(int argc, char **argv, nsh_container_params_t *para
                 return -1;
 
             params->hostname = optarg;
+            break;
+        case 'e':
+            if (strlen(optarg) > PATH_MAX)
+                return -1;
+
+            entrypoint = optarg;
             break;
         case 'w':
             if (strlen(optarg) > PATH_MAX)
@@ -89,7 +98,17 @@ static int nsh_parse_options(int argc, char **argv, nsh_container_params_t *para
         }
     }
 
+    params->config.entrypoint = &entrypoint;
+    params->config.entrypoint_len = entrypoint != NULL ? 1 : 0;
+
     return 0;
+}
+
+static void nsh_parse_args(int argc, char **argv, nsh_container_params_t *params)
+{
+    params->image_path = argv[0];
+    params->config.cmd = &argv[1];
+    params->config.cmd_len = argc - 1;
 }
 
 int main(int argc, char **argv)
@@ -105,16 +124,12 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    if (argc - optind < 2) {
-        fprintf(stderr, "Usage: nash [OPTIONS] IMAGE COMMAND [ARG...]\n");
+    if (argc - optind < 1) {
+        fprintf(stderr, "Usage: nash [OPTIONS] IMAGE [COMMAND] [ARG...]\n");
         return EXIT_FAILURE;
     }
 
-    params.image_path = argv[optind];
-    params.config.entrypoint = &argv[optind + 1];
-    params.config.entrypoint_len = 1;
-    params.config.cmd = &argv[optind + 2];
-    params.config.cmd_len = argc - optind - 2;
+    nsh_parse_args(argc - optind, argv + optind, &params);
 
     err = nsh_verify_system_comapt(&system_compat);
     if (err || !system_compat) {

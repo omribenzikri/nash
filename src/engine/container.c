@@ -23,6 +23,10 @@ static void nsh_resolve_container_workdir_path(
 static void nsh_load_image_config(
     nsh_image_t *image, nsh_container_config_t *config)
 {
+    config->entrypoint = nsh_image_config_entrypoint(image);
+    config->entrypoint_len = nsh_image_config_entrypoint_len(image);
+    config->cmd = nsh_image_config_cmd(image);
+    config->cmd_len = nsh_image_config_cmd_len(image);
     config->working_dir = nsh_image_config_working_dir(image);
 }
 
@@ -31,7 +35,7 @@ static int nsh_container_init_internal(
     nsh_container_params_t *params)
 {
     char rootfs_path[PATH_MAX];
-    nsh_container_config_t image_config;
+    nsh_container_config_t image_config = {0};
     int err;
 
     uuid_generate_random(container->id);

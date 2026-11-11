@@ -14,5 +14,9 @@ int nsh_image_rootfs_prepare(
 int nsh_image_rootfs_destroy(const char *path);
 
 char *nsh_image_config_working_dir(nsh_image_t *image);
+char **nsh_image_config_entrypoint(nsh_image_t *image);
+size_t nsh_image_config_entrypoint_len(nsh_image_t *image);
+char **nsh_image_config_cmd(nsh_image_t *image);
+size_t nsh_image_config_cmd_len(nsh_image_t *image);
 
 #endif
