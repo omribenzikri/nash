@@ -23,6 +23,8 @@ static void nsh_resolve_container_workdir_path(
 static void nsh_load_image_config(
     nsh_image_t *image, nsh_container_config_t *config)
 {
+    config->env = nsh_image_config_env(image);
+    config->env_len = nsh_image_config_env_len(image);
     config->entrypoint = nsh_image_config_entrypoint(image);
     config->entrypoint_len = nsh_image_config_entrypoint_len(image);
     config->cmd = nsh_image_config_cmd(image);

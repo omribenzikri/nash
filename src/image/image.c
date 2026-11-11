@@ -161,3 +161,13 @@ size_t nsh_image_config_cmd_len(nsh_image_t *image)
 {
     return image->oci.config->config->cmd_len;
 }
+
+char **nsh_image_config_env(nsh_image_t *image)
+{
+    return image->oci.config->config->env;
+}
+
+size_t nsh_image_config_env_len(nsh_image_t *image)
+{
+    return image->oci.config->config->env_len;
+}

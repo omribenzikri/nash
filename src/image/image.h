@@ -18,5 +18,7 @@ char **nsh_image_config_entrypoint(nsh_image_t *image);
 size_t nsh_image_config_entrypoint_len(nsh_image_t *image);
 char **nsh_image_config_cmd(nsh_image_t *image);
 size_t nsh_image_config_cmd_len(nsh_image_t *image);
+char **nsh_image_config_env(nsh_image_t *image);
+size_t nsh_image_config_env_len(nsh_image_t *image);
 
 #endif

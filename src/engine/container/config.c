@@ -16,6 +16,39 @@ typedef struct {
     nsh_container_config_t *image_config;
 } nsh_runtime_config_sources_t;
 
+static bool nsh_env_is_valid(const char *var)
+{
+    char *delim;
+    size_t delim_idx;
+
+    delim = strchr(var, '=');
+    if (delim == NULL)
+        return false;
+
+    delim_idx = delim - var;
+
+    return  0 < delim_idx && delim_idx < strlen(var);
+}
+
+static bool nsh_env_cmp_key(const char *var1, const char *var2)
+{
+    char *delim1; size_t delim1_idx;
+    char *delim2; size_t delim2_idx;
+    size_t len;
+
+    delim1 = strchr(var1, '=');
+    delim2 = strchr(var2, '=');
+
+    if (delim1 == NULL || delim2 == NULL)
+        return false;
+
+    delim1_idx = delim1 - var1;
+    delim2_idx = delim2 - var2;
+    len = (delim1_idx <= delim2_idx) ? delim1_idx : delim2_idx;
+
+    return strncmp(var1, var2, len) == 0;
+}
+
 static int nsh_runtime_config_rootfs_path_init(
     nsh_runtime_config_t *config, const char *rootfs_path)
 {
@@ -185,27 +218,83 @@ error:
     return -1;
 }
 
-static int nsh_runtime_config_init_exec_envp(
-    nsh_runtime_config_t *config, nsh_container_params_t *params)
+static bool nsh_runtime_config_env_var_exists(struct cc_array_s *env, const char *var)
 {
-    char **exec_envp;
-    size_t exec_envp_len;
+    char *existing_var;
 
-    exec_envp_len = params->config.env_len;
+    for (size_t i = 0; i < cc_array_size(env); i ++) {
+        cc_array_get_at(env, i, (void **)&existing_var);
 
-    exec_envp = calloc(exec_envp_len + 1, sizeof(*exec_envp));
-    if (exec_envp == NULL) {
-        perror("[x] Failed to allocate exec envp");
-        return -1;
+        if (nsh_env_cmp_key(var, existing_var))
+            return true;
     }
 
-    for (size_t i = 0; i < params->config.env_len; i++)
-        exec_envp[i] = params->config.env[i];
+    return false;
+}
 
-    exec_envp[exec_envp_len] = NULL;
-    config->exec_envp = exec_envp;
+static int nsh_runtime_config_env_apply_source(
+    struct cc_array_s *env, char **src, size_t src_len)
+{
+    const char *var;
+    enum cc_stat cc_stat;
+
+    for (size_t i = 0; i < src_len; i++) {
+        var = src[i];
+        if (!nsh_env_is_valid(var)) {
+            fprintf(stderr, "[x] Invalid environment variable: %s\n", var);
+            return -1;
+        }
+
+        if (nsh_runtime_config_env_var_exists(env, var))
+            continue;
+
+        cc_stat = cc_array_add_string(env, var);
+        if (cc_stat != CC_OK) {
+            fprintf(stderr, "[x] Failed to add environment variable: %s\n", var);
+            return -1;
+        }
+    }
 
     return 0;
+}
+
+static int nsh_runtime_config_exec_envp_init(
+    nsh_runtime_config_t *config, nsh_runtime_config_sources_t *sources)
+{
+    struct cc_array_s *env;
+    enum cc_stat cc_stat;
+    int err;
+
+    cc_stat = cc_array_new(&env);
+    if (cc_stat != CC_OK) {
+        fprintf(stderr, "[x] Failed to allocate env dynarray");
+        goto error;
+    }
+
+    err = nsh_runtime_config_env_apply_source(env,
+        sources->user_params->config.env, sources->user_params->config.env_len);
+    if (err)
+        goto error_destroy_env;
+
+    err = nsh_runtime_config_env_apply_source(env,
+        sources->image_config->env, sources->image_config->env_len);
+    if (err)
+        goto error_destroy_env;
+
+    cc_stat = cc_array_to_static_shallow(env, (void ***)&config->exec_envp);
+    if (cc_stat != CC_OK) {
+        fprintf(stderr, "[x] Failed to allocate env\n");
+        goto error_destroy_env;
+    }
+
+    cc_array_destroy(env);
+
+    return 0;
+
+error_destroy_env:
+    cc_array_destroy_cb(env, free);
+error:
+    return -1;
 }
 
 int nsh_runtime_config_init(
@@ -234,7 +323,7 @@ int nsh_runtime_config_init(
     if (err)
         goto error_free_exec_path;
 
-    err = nsh_runtime_config_init_exec_envp(config, user_params);
+    err = nsh_runtime_config_exec_envp_init(config, &sources);
     if (err)
         goto error_free_exec_argv;
 
@@ -245,10 +334,9 @@ int nsh_runtime_config_init(
     return 0;
 
 error_free_exec_envp:
-    free(config->exec_envp);
+    ARRAY_FREE_DEEP(config->exec_envp);
 error_free_exec_argv:
-    ARRAY_ITESM_FREE(config->exec_argv);
-    free(config->exec_argv);
+    ARRAY_FREE_DEEP(config->exec_argv);
 error_free_exec_path:
     free(config->exec_path);
 error_free_hostname:
@@ -262,8 +350,8 @@ error:
 void nsh_runtime_config_destroy(nsh_runtime_config_t *config)
 {
     free(config->cwd);
-    free(config->exec_envp);
-    free(config->exec_argv);
+    ARRAY_FREE_DEEP(config->exec_envp);
+    ARRAY_FREE_DEEP(config->exec_argv);
     free(config->exec_path);
     free(config->hostname);
     free(config->rootfs_path);
