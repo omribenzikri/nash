@@ -82,7 +82,7 @@ static int nsh_container_exec(nsh_run_config_t *config)
         goto error_free_argv;
     }
 
-    execve(exec_path, exec_argv, exec_argv);
+    execve(exec_path, exec_argv, exec_envp);
 
     perror("[x] Failed to execute container program");
     goto error_free_envp;
