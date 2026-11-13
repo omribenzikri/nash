@@ -1,139 +1,96 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdio.h>
-#include <string.h>
-#include <assert.h>
-#include <limits.h>
-#include <sys/types.h>
+#include <sys/stat.h>
 #include <linux/limits.h>
 #include <uuid/uuid.h>
 #include "image/image.h"
 #include "runtime/runtime.h"
 #include "common/constants.h"
 #include "utils/filesystem.h"
+#include "engine/container/config/config.h"
 #include "engine/container.h"
 
-#define NSH_GEN_HOSTNAME_LEN 13
-
-static void nsh_container_workdir_resolve_path(nsh_container_t *container)
+static void nsh_resolve_container_workdir_path(
+    uuid_t container_id, char *buf, size_t size)
 {
     char uuid_string[UUID_STR_LEN];
-    uuid_unparse_lower(container->id, uuid_string);
-
-    snprintf(container->workdir_path, sizeof(container->workdir_path),
-        "%s/%s", NSH_WORKDIR_CONTAINERS, uuid_string);
-}
-
-static int nsh_container_workspace_create(nsh_container_t *container)
-{
-    int err;
-
-    nsh_container_workdir_resolve_path(container);
-
-    err = mkdir_if_missing(container->workdir_path, S_IRWXU);
-    if (err) {
-        perror("[x] Failed to create container working directory");
-        return -1;
-    }
-
-    return 0;
-}
-
-static int nsh_container_workspace_delete(nsh_container_t *container)
-{
-    int err;
-
-    err = rmdir_recursive(container->workdir_path);
-    if (err) {
-        perror("[x] Failed to delete container working directory");
-        return -1;
-    }
-
-    return 0;
-}
-
-static char *nsh_generate_hostname(uuid_t container_id)
-{
-    char uuid_string[UUID_STR_LEN];
-    char *hostname = uuid_string + sizeof(uuid_string)
-                                 - NSH_GEN_HOSTNAME_LEN;
-
-    assert(NSH_GEN_HOSTNAME_LEN < UUID_STR_LEN);
     uuid_unparse_lower(container_id, uuid_string);
 
-    return strndup(hostname, NSH_GEN_HOSTNAME_LEN);
+    snprintf(buf, size, "%s/%s", NSH_WORKDIR_CONTAINERS, uuid_string);
 }
 
-static int nsh_runtime_config_init(nsh_container_t *container,
-                                   nsh_container_config_t *user_config)
+static void nsh_load_image_config(
+    nsh_image_t *image, nsh_container_config_t *config)
 {
-    nsh_runtime_config_t *runtime_config =
-        &container->runtime_config;
-
-    runtime_config->hostname = user_config->hostname == NULL
-        ? nsh_generate_hostname(container->id)
-        : strndup(user_config->hostname, HOST_NAME_MAX);
-
-    if (runtime_config->hostname == NULL) {
-        fprintf(stderr, "[x] Failed to allocate container hostname\n");
-        return -1;
-    }
-
-    runtime_config->exec_path = user_config->exec_path;
-    runtime_config->exec_argv = user_config->exec_argv;
-    runtime_config->exec_envp = user_config->exec_envp;
-    runtime_config->resources = user_config->resources;
-
-    return 0;
+    config->env = nsh_image_config_env(image);
+    config->env_len = nsh_image_config_env_len(image);
+    config->entrypoint = nsh_image_config_entrypoint(image);
+    config->entrypoint_len = nsh_image_config_entrypoint_len(image);
+    config->cmd = nsh_image_config_cmd(image);
+    config->cmd_len = nsh_image_config_cmd_len(image);
+    config->working_dir = nsh_image_config_working_dir(image);
+    config->user = nsh_image_config_user(image);
 }
 
-static void nsh_runtime_config_destroy(nsh_runtime_config_t *config)
+static int nsh_container_init_internal(
+    nsh_container_t *container, nsh_image_t *image,
+    nsh_container_params_t *user_params)
 {
-    free(config->hostname);
-}
-
-static int nsh_container_init_rootfs(nsh_container_t *container, nsh_image_t *image)
-{
-    int err;
     char rootfs_path[PATH_MAX];
+    nsh_container_config_t image_config = {0};
+    nsh_runcfg_init_params_t runcfg_params = {
+        .rootfs_path = rootfs_path,
+        .user_params = user_params,
+        .image_config = &image_config
+    };
+    int err;
+
+    uuid_generate_random(container->id);
+
+    nsh_resolve_container_workdir_path(container->id,
+        container->workdir_path, sizeof(container->workdir_path));
+
+    err = mkdir(container->workdir_path, S_IRWXU);
+    if (err)
+        goto error;
 
     err = nsh_image_rootfs_prepare(image, container->workdir_path,
-                                   rootfs_path, sizeof(rootfs_path));
-    if (err) {
-        fprintf(stderr, "[x] Failed to prepare container rootfs\n");
-        goto error;
-    }
+        rootfs_path, sizeof(rootfs_path));
+    if (err)
+        goto error_delete_workdir;
 
-    container->runtime_config.rootfs_path =
-        strndup(rootfs_path, sizeof(rootfs_path));
+    nsh_load_image_config(image, &image_config);
 
-    if (container->runtime_config.rootfs_path == NULL) {
-        perror("[x] Failed to allocate container rootfs path");
+    err = nsh_runtime_config_init(&container->runtime_config, &runcfg_params);
+    if (err)
         goto error_destroy_rootfs;
-    }
 
     return 0;
 
 error_destroy_rootfs:
-    nsh_image_rootfs_destroy(rootfs_path);
+    nsh_image_rootfs_destroy(container->runtime_config.rootfs_path);
+error_delete_workdir:
+    rmdir_recursive(container->workdir_path);
 error:
     return -1;
 }
 
-static int nsh_container_init_image_related(nsh_container_t *container, const char *image_path)
+static int nsh_container_init(
+    nsh_container_t *container, nsh_container_params_t *params)
 {
     nsh_image_t *image;
     int ret = 0;
     int err;
 
-    image = nsh_image_load(image_path);
+    image = nsh_image_load(params->image_path);
     if (image == NULL) {
         fprintf(stderr, "[x] Failed to load image\n");
         ret = -1;
         goto out;
     }
 
-    err = nsh_container_init_rootfs(container, image);
+    err = nsh_container_init_internal(container, image, params);
     if (err) {
         ret = -1;
         goto out_free_image;
@@ -145,43 +102,18 @@ out:
     return ret;
 }
 
-static int nsh_container_init(nsh_container_t *container,
-    nsh_container_config_t *user_config)
+static void nsh_container_cleanup(nsh_container_t *container)
 {
-    int err;
-
-    uuid_generate_random(container->id);
-
-    err = nsh_container_workspace_create(container);
-    if (err)
-        goto error;
-
-    err = nsh_runtime_config_init(container, user_config);
-    if (err)
-        goto error_delete_workspace;
-
-    err = nsh_container_init_image_related(container, user_config->image_path);
-    if (err)
-        goto error_free_config;
-
-    return 0;
-
-error_free_config:
-    nsh_runtime_config_destroy(&container->runtime_config);
-error_delete_workspace:
-    nsh_container_workspace_delete(container);
-error:
-    return -1;
+    nsh_image_rootfs_destroy(container->runtime_config.rootfs_path);
+    rmdir_recursive(container->workdir_path);
 }
 
 static void nsh_container_destroy(nsh_container_t *container)
 {
-    nsh_image_rootfs_destroy(container->runtime_config.rootfs_path);
     nsh_runtime_config_destroy(&container->runtime_config);
-    nsh_container_workspace_delete(container);
 }
 
-nsh_container_t *nsh_engine_container_create(nsh_container_config_t *config)
+nsh_container_t *nsh_engine_container_create(nsh_container_params_t *params)
 {
     nsh_container_t *container;
     int err;
@@ -192,18 +124,19 @@ nsh_container_t *nsh_engine_container_create(nsh_container_config_t *config)
         goto error;
     }
 
-    err = nsh_container_init(container, config);
+    err = nsh_container_init(container, params);
     if (err)
         goto error_free_container;
 
     container->pid = nsh_runtime_container_create(
         container->id, &container->runtime_config);
     if (container->pid == -1)
-        goto error_destroy_container;
+        goto error_cleanup_destroy_container;
 
     return container;
 
-error_destroy_container:
+error_cleanup_destroy_container:
+    nsh_container_cleanup(container);
     nsh_container_destroy(container);
 error_free_container:
     free(container);
@@ -214,6 +147,11 @@ error:
 void nsh_engine_container_delete(nsh_container_t *container)
 {
     nsh_runtime_container_cleanup(container->id);
+    nsh_container_cleanup(container);
+}
+
+void nsh_engine_container_free(nsh_container_t *container)
+{
     nsh_container_destroy(container);
     free(container);
 }

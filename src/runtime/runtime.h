@@ -4,13 +4,16 @@
 #include <uuid/uuid.h>
 #include <sys/types.h>
 #include "runtime/resources.h"
+#include "runtime/creds.h"
 
 typedef struct {
-    char *hostname;
     char *rootfs_path;
+    char *hostname;
+    char *cwd;
     char *exec_path;
     char **exec_argv;
     char **exec_envp;
+    nsh_creds_t creds;
     nsh_resources_t resources;
 } nsh_runtime_config_t;
 

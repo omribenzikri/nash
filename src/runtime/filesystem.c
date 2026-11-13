@@ -189,7 +189,7 @@ int nsh_fs_mount_essentials()
     return 0;
 }
 
-int nsh_fs_pivot_root(const char *root)
+int nsh_fs_pivot_root(const char *root, const char *cwd)
 {
     const char *old_root_rel = "/old-rootfs";
     char old_root_abs[PATH_MAX];
@@ -227,7 +227,7 @@ int nsh_fs_pivot_root(const char *root)
         return -1;
     }
 
-    err = chdir("/");
+    err = chdir(cwd);
     if (err) {
         perror("[x] Failed to change working directory");
         ret = -1;

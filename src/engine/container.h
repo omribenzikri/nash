@@ -1,12 +1,11 @@
 #ifndef _NASH_ENGINE_CONTAINER_H
 #define _NASH_ENGINE_CONTAINER_H
 
-#include <limits.h>
 #include <sys/types.h>
 #include <linux/limits.h>
 #include <uuid/uuid.h>
-#include "runtime/resources.h"
 #include "runtime/runtime.h"
+#include "engine/container/config/config.h"
 
 typedef struct {
     uuid_t id;
@@ -15,16 +14,8 @@ typedef struct {
     nsh_runtime_config_t runtime_config;
 } nsh_container_t;
 
-typedef struct {
-    char *hostname;
-    char *image_path;
-    char *exec_path;
-    char **exec_argv;
-    char **exec_envp;
-    nsh_resources_t resources;
-} nsh_container_config_t;
-
-nsh_container_t *nsh_engine_container_create(nsh_container_config_t *config);
+nsh_container_t *nsh_engine_container_create(nsh_container_params_t *params);
 void nsh_engine_container_delete(nsh_container_t *container);
+void nsh_engine_container_free(nsh_container_t *container);
 
 #endif

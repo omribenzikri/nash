@@ -7,6 +7,7 @@
 #include <string.h>
 #include <assert.h>
 #include <signal.h>
+#include <limits.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <linux/sched.h>
@@ -14,21 +15,55 @@
 #include "runtime/filesystem.h"
 #include "runtime/resources.h"
 #include "runtime/capabilities.h"
+#include "runtime/creds.h"
 #include "runtime/runtime.h"
 
-static void nsh_container_startup(nsh_runtime_config_t *config)
+#define NSH_GEN_HOSTNAME_LEN 13
+
+static void nsh_hostname_generate(uuid_t container_id, char *buf, size_t size)
+{
+    char uuid_string[UUID_STR_LEN];
+    char *hostname;
+
+    assert(NSH_GEN_HOSTNAME_LEN < HOST_NAME_MAX);
+    assert(NSH_GEN_HOSTNAME_LEN < UUID_STR_LEN);
+    uuid_unparse_lower(container_id, uuid_string);
+
+    hostname = uuid_string + sizeof(uuid_string) - NSH_GEN_HOSTNAME_LEN;
+    snprintf(buf, size, "%s", hostname);
+}
+
+static int nsh_hostname_set(uuid_t container_id, const char *name)
 {
     int err;
+    char hostname[HOST_NAME_MAX];
 
-    err = sethostname(config->hostname, strlen(config->hostname));
+    if (name == NULL)
+        nsh_hostname_generate(container_id, hostname, sizeof(hostname));
+    else
+        snprintf(hostname, sizeof(hostname), "%s", name);
+
+    err = sethostname(hostname, strlen(hostname));
     if (err) {
         perror("[x] Failed to set container hostname");
         exit(EXIT_FAILURE);
     }
 
+    return 0;
+}
+
+static void nsh_container_startup(uuid_t id, nsh_runtime_config_t *config)
+{
+    int err;
+
+    err = nsh_hostname_set(id, config->hostname);
+    if (err)
+        exit(EXIT_FAILURE);
+
     umask(0);
 
-    err = nsh_fs_pivot_root(config->rootfs_path);
+    err = nsh_fs_pivot_root(config->rootfs_path,
+                            config->cwd);
     if (err)
         exit(EXIT_FAILURE);
 
@@ -44,13 +79,18 @@ static void nsh_container_startup(nsh_runtime_config_t *config)
     if (err)
         exit(EXIT_FAILURE);
 
+    err = nsh_creds_set(&config->creds);
+    if (err)
+        exit(EXIT_FAILURE);
+
     execve(config->exec_path, config->exec_argv, config->exec_argv);
 
     perror("[x] Failed to execute container program");
     exit(EXIT_FAILURE);
 }
 
-static pid_t nsh_container_clone(nsh_runtime_config_t *config, int cgroup_fd)
+static pid_t nsh_container_clone(
+    uuid_t id, nsh_runtime_config_t *config, int cgroup_fd)
 {
     pid_t pid;
 
@@ -69,7 +109,7 @@ static pid_t nsh_container_clone(nsh_runtime_config_t *config, int cgroup_fd)
     }
 
     if (pid == 0) {
-        nsh_container_startup(config);
+        nsh_container_startup(id, config);
         assert(false);
     }
 
@@ -88,7 +128,7 @@ pid_t nsh_runtime_container_create(uuid_t id, nsh_runtime_config_t *config)
 
     printf("[+] Successfully created container cgroup\n");
 
-    pid = nsh_container_clone(config, cgroup_fd);
+    pid = nsh_container_clone(id, config, cgroup_fd);
     err = close(cgroup_fd);
 
     if (err)
