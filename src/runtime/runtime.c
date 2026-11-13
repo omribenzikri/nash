@@ -103,17 +103,11 @@ static void nsh_container_startup(uuid_t id, nsh_run_params_t *params)
     if (err)
         exit(EXIT_FAILURE);
 
-    umask(0);
-
     err = nsh_fs_pivot_root(params->rootfs_path, params->config.workdir);
     if (err)
         exit(EXIT_FAILURE);
 
-    err = nsh_fs_mount();
-    if (err)
-        exit(EXIT_FAILURE);
-
-    err = nsh_fs_populate();
+    err = nsh_fs_prepare();
     if (err)
         exit(EXIT_FAILURE);
 

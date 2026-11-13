@@ -1,6 +1,8 @@
 #ifndef _NASH_UTILS_MACROS_H
 #define _NASH_UTILS_MACROS_H
 
+#define ARRAY_LEN(name) sizeof(name) / sizeof(*name);
+
 #define ARRAY_WITH_LEN(type, name) type *name; size_t name##_len;
 
 #define ARRAY_FREE_ITEMS(name) \
