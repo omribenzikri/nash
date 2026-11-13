@@ -12,7 +12,7 @@
 #include "utils/array.h"
 #include "utils/string.h"
 #include "runtime/creds.h"
-#include "engine/container/creds.h"
+#include "engine/container/config/creds.h"
 
 #define PASSWD_PATH "/etc/passwd"
 #define GROUP_PATH "/etc/group"

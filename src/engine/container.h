@@ -5,7 +5,7 @@
 #include <linux/limits.h>
 #include <uuid/uuid.h>
 #include "runtime/runtime.h"
-#include "engine/container/config.h"
+#include "engine/container/config/config.h"
 
 typedef struct {
     uuid_t id;

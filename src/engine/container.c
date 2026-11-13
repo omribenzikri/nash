@@ -8,7 +8,7 @@
 #include "runtime/runtime.h"
 #include "common/constants.h"
 #include "utils/filesystem.h"
-#include "engine/container/config.h"
+#include "engine/container/config/config.h"
 #include "engine/container.h"
 
 static void nsh_resolve_container_workdir_path(
