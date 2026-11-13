@@ -9,6 +9,7 @@
 #include "common/constants.h"
 #include "utils/filesystem.h"
 #include "engine/container/config/config.h"
+#include "engine/container/init.h"
 #include "engine/container.h"
 
 static void nsh_resolve_container_workdir_path(
@@ -39,7 +40,7 @@ static int nsh_container_init_internal(
 {
     char rootfs_path[PATH_MAX];
     nsh_container_config_t image_config = {0};
-    nsh_runcfg_init_params_t runcfg_params = {
+    nsh_init_context_t ctx = {
         .rootfs_path = rootfs_path,
         .user_params = user_params,
         .image_config = &image_config
@@ -62,14 +63,14 @@ static int nsh_container_init_internal(
 
     nsh_load_image_config(image, &image_config);
 
-    err = nsh_runtime_config_init(&container->runtime_config, &runcfg_params);
+    err = nsh_run_params_init(&container->run_params, &ctx);
     if (err)
         goto error_destroy_rootfs;
 
     return 0;
 
 error_destroy_rootfs:
-    nsh_image_rootfs_destroy(container->runtime_config.rootfs_path);
+    nsh_image_rootfs_destroy(rootfs_path);
 error_delete_workdir:
     rmdir_recursive(container->workdir_path);
 error:
@@ -104,13 +105,13 @@ out:
 
 static void nsh_container_cleanup(nsh_container_t *container)
 {
-    nsh_image_rootfs_destroy(container->runtime_config.rootfs_path);
+    nsh_image_rootfs_destroy(container->run_params.rootfs_path);
     rmdir_recursive(container->workdir_path);
 }
 
 static void nsh_container_destroy(nsh_container_t *container)
 {
-    nsh_runtime_config_destroy(&container->runtime_config);
+    nsh_run_params_destroy(&container->run_params);
 }
 
 nsh_container_t *nsh_engine_container_create(nsh_container_params_t *params)
@@ -128,8 +129,7 @@ nsh_container_t *nsh_engine_container_create(nsh_container_params_t *params)
     if (err)
         goto error_free_container;
 
-    container->pid = nsh_run_create(
-        container->id, &container->runtime_config);
+    container->pid = nsh_run_create(container->id, &container->run_params);
     if (container->pid == -1)
         goto error_cleanup_destroy_container;
 

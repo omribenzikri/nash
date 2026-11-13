@@ -13,13 +13,14 @@
 #include "engine/container/config/env.h"
 #include "engine/container/config/creds.h"
 #include "engine/container/config/config.h"
+#include "engine/container/init.h"
 
-static int nsh_runtime_config_rootfs_path_init(
-    char **rootfs_path, nsh_runcfg_init_params_t *params)
+static int nsh_run_params_rootfs_path_init(
+    char **rootfs_path, nsh_init_context_t *ctx)
 {
-    assert(params->rootfs_path != NULL);
+    assert(ctx->rootfs_path != NULL);
 
-    *rootfs_path = strndup(params->rootfs_path, PATH_MAX);
+    *rootfs_path = strndup(ctx->rootfs_path, PATH_MAX);
     if (*rootfs_path == NULL) {
         perror("[x] Failed to allocate rootfs path");
         return -1;
@@ -28,15 +29,15 @@ static int nsh_runtime_config_rootfs_path_init(
     return 0;
 }
 
-static int nsh_runtime_config_hostname_init(
-    char **hostname, nsh_runcfg_init_params_t *params)
+static int nsh_run_config_hostname_init(
+    char **hostname, nsh_init_context_t *ctx)
 {
-    if (params->user_params->hostname == NULL) {
+    if (ctx->user_params->hostname == NULL) {
         *hostname = NULL;
         return 0;
     }
 
-    *hostname = strndup(params->user_params->hostname, PATH_MAX);
+    *hostname = strndup(ctx->user_params->hostname, PATH_MAX);
     if (*hostname == NULL) {
         perror("[x] Failed to allocate hostname");
         return -1;
@@ -45,26 +46,26 @@ static int nsh_runtime_config_hostname_init(
     return 0;
 }
 
-static void nsh_runtime_config_cwd_pick(
-    nsh_runcfg_init_params_t *params, char **out)
+static void nsh_run_config_cwd_pick(
+    nsh_init_context_t *ctx, char **out)
 {
-    if (params->user_params->config.working_dir != NULL) {
-        *out = params->user_params->config.working_dir;
+    if (ctx->user_params->config.working_dir != NULL) {
+        *out = ctx->user_params->config.working_dir;
     }
-    else if (params->image_config->working_dir != NULL) {
-        *out = params->image_config->working_dir;
+    else if (ctx->image_config->working_dir != NULL) {
+        *out = ctx->image_config->working_dir;
     }
     else {
         *out = NSH_DEFAULT_WORKING_DIRECTORY;
     }
 }
 
-static int nsh_runtime_config_cwd_init(
-    char **cwd, nsh_runcfg_init_params_t *params)
+static int nsh_run_config_cwd_init(
+    char **cwd, nsh_init_context_t *ctx)
 {
     char *cwd_temp;
 
-    nsh_runtime_config_cwd_pick(params, &cwd_temp);
+    nsh_run_config_cwd_pick(ctx, &cwd_temp);
 
     *cwd = strndup(cwd_temp, PATH_MAX);
     if (*cwd == NULL) {
@@ -75,22 +76,22 @@ static int nsh_runtime_config_cwd_init(
     return 0;
 }
 
-static void nsh_runtime_config_creds_str_pick(
-    nsh_runcfg_init_params_t *params, char **out)
+static void nsh_run_config_creds_str_pick(
+    nsh_init_context_t *ctx, char **out)
 {
-    if (params->user_params->config.user != NULL) {
-        *out = params->user_params->config.user;
+    if (ctx->user_params->config.user != NULL) {
+        *out = ctx->user_params->config.user;
     }
-    else if (params->image_config->user != NULL) {
-        *out = params->image_config->user;
+    else if (ctx->image_config->user != NULL) {
+        *out = ctx->image_config->user;
     }
     else {
         *out = NSH_DEFAULT_USER;
     }
 }
 
-static int nsh_runtime_config_creds_init(
-    nsh_creds_t *creds, nsh_runcfg_init_params_t *params)
+static int nsh_run_config_creds_init(
+    nsh_creds_t *creds, nsh_init_context_t *ctx)
 {
     char *creds_str;
     char *user;
@@ -98,7 +99,7 @@ static int nsh_runtime_config_creds_init(
     int err;
     int ret = 0;
 
-    nsh_runtime_config_creds_str_pick(params, &creds_str);
+    nsh_run_config_creds_str_pick(ctx, &creds_str);
 
     err = nsh_creds_parse(creds_str, &user, &group);
     if (err) {
@@ -106,7 +107,7 @@ static int nsh_runtime_config_creds_init(
         goto out;
     }
 
-    err = nsh_creds_resolve(user, group, params->rootfs_path, creds);
+    err = nsh_creds_resolve(user, group, ctx->rootfs_path, creds);
     if (err) {
         ret = -1;
         goto out_free_user_group;
@@ -119,21 +120,21 @@ out:
     return ret;
 }
 
-static void nsh_runtime_config_creds_destroy(nsh_creds_t *creds)
+static void nsh_run_config_creds_destroy(nsh_creds_t *creds)
 {
     free(creds->sup_gids);
 }
 
-static void nsh_runtime_config_entrypoint_pick(
-    nsh_runcfg_init_params_t *params, char ***outv, size_t *outc)
+static void nsh_run_config_entrypoint_pick(
+    nsh_init_context_t *ctx, char ***outv, size_t *outc)
 {
-    if (params->user_params->config.entrypoint_len > 0) {
-        *outv = params->user_params->config.entrypoint;
-        *outc = params->user_params->config.entrypoint_len;
+    if (ctx->user_params->config.entrypoint_len > 0) {
+        *outv = ctx->user_params->config.entrypoint;
+        *outc = ctx->user_params->config.entrypoint_len;
     }
-    else if (params->image_config->entrypoint_len > 0) {
-        *outv = params->image_config->entrypoint;
-        *outc = params->image_config->entrypoint_len;
+    else if (ctx->image_config->entrypoint_len > 0) {
+        *outv = ctx->image_config->entrypoint;
+        *outc = ctx->image_config->entrypoint_len;
     }
     else {
         *outv = NULL;
@@ -141,16 +142,16 @@ static void nsh_runtime_config_entrypoint_pick(
     }
 }
 
-static void nsh_runtime_config_cmd_pick(
-    nsh_runcfg_init_params_t *params, char ***outv, size_t *outc)
+static void nsh_run_config_cmd_pick(
+    nsh_init_context_t *ctx, char ***outv, size_t *outc)
 {
-    if (params->user_params->config.cmd_len > 0) {
-        *outv = params->user_params->config.cmd;
-        *outc = params->user_params->config.cmd_len;
+    if (ctx->user_params->config.cmd_len > 0) {
+        *outv = ctx->user_params->config.cmd;
+        *outc = ctx->user_params->config.cmd_len;
     }
-    else if (params->image_config->cmd_len > 0) {
-        *outv = params->image_config->cmd;
-        *outc = params->image_config->cmd_len;
+    else if (ctx->image_config->cmd_len > 0) {
+        *outv = ctx->image_config->cmd;
+        *outc = ctx->image_config->cmd_len;
     }
     else {
         *outv = NULL;
@@ -158,14 +159,14 @@ static void nsh_runtime_config_cmd_pick(
     }
 }
 
-static void nsh_runtime_config_exec_path_pick(
-    nsh_runcfg_init_params_t *params, char **out)
+static void nsh_run_config_exec_path_pick(
+    nsh_init_context_t *ctx, char **out)
 {
     ARRAY_WITH_LEN(char *, entrypoint);
     ARRAY_WITH_LEN(char *, cmd);
 
-    nsh_runtime_config_entrypoint_pick(params, &entrypoint, &entrypoint_len);
-    nsh_runtime_config_cmd_pick(params, &cmd, &cmd_len);
+    nsh_run_config_entrypoint_pick(ctx, &entrypoint, &entrypoint_len);
+    nsh_run_config_cmd_pick(ctx, &cmd, &cmd_len);
 
     if (entrypoint == NULL)
         *out = cmd != NULL ? cmd[0] : NULL;
@@ -173,12 +174,12 @@ static void nsh_runtime_config_exec_path_pick(
         *out = entrypoint[0];
 }
 
-static int nsh_runtime_config_exec_path_init(
-    char **exec_path, nsh_runcfg_init_params_t *params)
+static int nsh_run_config_exec_path_init(
+    char **exec_path, nsh_init_context_t *ctx)
 {
     char *exec_path_temp = NULL;
 
-    nsh_runtime_config_exec_path_pick(params, &exec_path_temp);
+    nsh_run_config_exec_path_pick(ctx, &exec_path_temp);
     if (exec_path_temp == NULL) {
         fprintf(stderr, "[x] Container executable path missing\n");
         return -1;
@@ -193,8 +194,8 @@ static int nsh_runtime_config_exec_path_init(
     return 0;
 }
 
-static int nsh_runtime_config_exec_argv_init(
-    char ***exec_argv, nsh_runcfg_init_params_t *params)
+static int nsh_run_config_exec_argv_init(
+    char ***exec_argv, nsh_init_context_t *ctx)
 {
     ARRAY_WITH_LEN(char *, entrypoint);
     ARRAY_WITH_LEN(char *, cmd);
@@ -207,8 +208,8 @@ static int nsh_runtime_config_exec_argv_init(
         goto error;
     }
 
-    nsh_runtime_config_entrypoint_pick(params, &entrypoint, &entrypoint_len);
-    nsh_runtime_config_cmd_pick(params, &cmd, &cmd_len);
+    nsh_run_config_entrypoint_pick(ctx, &entrypoint, &entrypoint_len);
+    nsh_run_config_cmd_pick(ctx, &cmd, &cmd_len);
 
     cc_stat = cc_array_extend_strings(args, entrypoint, entrypoint_len);
     if (cc_stat != CC_OK)
@@ -231,7 +232,7 @@ error:
     return -1;
 }
 
-static bool nsh_runtime_config_env_var_exists(
+static bool nsh_run_config_env_var_exists(
     struct cc_array_s *existing, const char *var)
 {
     char *existing_var;
@@ -246,7 +247,7 @@ static bool nsh_runtime_config_env_var_exists(
     return false;
 }
 
-static int nsh_runtime_config_env_apply_source(
+static int nsh_run_config_env_apply_source(
     struct cc_array_s *vars, char **src, size_t src_len)
 {
     char *var;
@@ -259,7 +260,7 @@ static int nsh_runtime_config_env_apply_source(
             return -1;
         }
 
-        if (nsh_runtime_config_env_var_exists(vars, var))
+        if (nsh_run_config_env_var_exists(vars, var))
             continue;
 
         cc_stat = cc_array_add_string(vars, var);
@@ -272,8 +273,8 @@ static int nsh_runtime_config_env_apply_source(
     return 0;
 }
 
-static int nsh_runtime_config_exec_envp_init(
-    char ***exec_envp, nsh_runcfg_init_params_t *params)
+static int nsh_run_config_exec_envp_init(
+    char ***exec_envp, nsh_init_context_t *ctx)
 {
     struct cc_array_s *vars;
     enum cc_stat cc_stat;
@@ -285,15 +286,15 @@ static int nsh_runtime_config_exec_envp_init(
         goto error;
     }
 
-    err = nsh_runtime_config_env_apply_source(vars,
-        params->user_params->config.env,
-        params->user_params->config.env_len);
+    err = nsh_run_config_env_apply_source(vars,
+        ctx->user_params->config.env,
+        ctx->user_params->config.env_len);
     if (err)
         goto error_destroy_env;
 
-    err = nsh_runtime_config_env_apply_source(vars,
-        params->image_config->env,
-        params->image_config->env_len);
+    err = nsh_run_config_env_apply_source(vars,
+        ctx->image_config->env,
+        ctx->image_config->env_len);
     if (err)
         goto error_destroy_env;
 
@@ -311,37 +312,31 @@ error:
     return -1;
 }
 
-int nsh_runtime_config_init(
-    nsh_run_config_t *config,
-    nsh_runcfg_init_params_t *params)
+int nsh_run_config_init(nsh_run_config_t *config, nsh_init_context_t *ctx)
 {
     int err;
 
-    err = nsh_runtime_config_rootfs_path_init(&config->rootfs_path, params);
+    err = nsh_run_config_hostname_init(&config->hostname, ctx);
     if (err)
         goto error;
 
-    err = nsh_runtime_config_hostname_init(&config->hostname, params);
-    if (err)
-        goto error_free_rootfs_path;
-
-    err = nsh_runtime_config_exec_path_init(&config->exec_path, params);
+    err = nsh_run_config_exec_path_init(&config->exec_path, ctx);
     if (err)
         goto error_free_hostname;
 
-    err = nsh_runtime_config_exec_argv_init(&config->exec_argv, params);
+    err = nsh_run_config_exec_argv_init(&config->exec_argv, ctx);
     if (err)
         goto error_free_exec_path;
 
-    err = nsh_runtime_config_exec_envp_init(&config->exec_envp, params);
+    err = nsh_run_config_exec_envp_init(&config->exec_envp, ctx);
     if (err)
         goto error_free_exec_argv;
 
-    err = nsh_runtime_config_cwd_init(&config->cwd, params);
+    err = nsh_run_config_cwd_init(&config->cwd, ctx);
     if (err)
         goto error_free_exec_envp;
 
-    err = nsh_runtime_config_creds_init(&config->creds, params);
+    err = nsh_run_config_creds_init(&config->creds, ctx);
     if (err)
         goto error_free_exec_cwd;
 
@@ -357,20 +352,43 @@ error_free_exec_path:
     free(config->exec_path);
 error_free_hostname:
     free(config->hostname);
-error_free_rootfs_path:
-    free(config->rootfs_path);
 error:
     return -1;
 }
 
-void nsh_runtime_config_destroy(nsh_run_config_t *config)
+void nsh_run_config_destroy(nsh_run_config_t *config)
 {
-    nsh_runtime_config_creds_destroy(&config->creds);
+    nsh_run_config_creds_destroy(&config->creds);
 
     free(config->cwd);
     ARRAY_FREE_DEEP(config->exec_envp);
     ARRAY_FREE_DEEP(config->exec_argv);
     free(config->exec_path);
     free(config->hostname);
-    free(config->rootfs_path);
+}
+
+int nsh_run_params_init(nsh_run_params_t *params, nsh_init_context_t *ctx)
+{
+    int err;
+
+    err = nsh_run_params_rootfs_path_init(&params->rootfs_path, ctx);
+    if (err)
+        goto error;
+
+    err = nsh_run_config_init(&params->config, ctx);
+    if (err)
+        goto error_free_rootfs_path;
+
+    return 0;
+
+error_free_rootfs_path:
+    free(params->rootfs_path);
+error:
+    return -1;
+}
+
+void nsh_run_params_destroy(nsh_run_params_t *params)
+{
+    free(params->rootfs_path);
+    nsh_run_config_destroy(&params->config);
 }

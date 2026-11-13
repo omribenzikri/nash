@@ -52,18 +52,17 @@ static int nsh_hostname_set(uuid_t container_id, const char *name)
     return 0;
 }
 
-static void nsh_container_startup(uuid_t id, nsh_run_config_t *config)
+static void nsh_container_startup(uuid_t id, nsh_run_params_t *params)
 {
     int err;
 
-    err = nsh_hostname_set(id, config->hostname);
+    err = nsh_hostname_set(id, params->config.hostname);
     if (err)
         exit(EXIT_FAILURE);
 
     umask(0);
 
-    err = nsh_fs_pivot_root(config->rootfs_path,
-                            config->cwd);
+    err = nsh_fs_pivot_root(params->rootfs_path, params->config.cwd);
     if (err)
         exit(EXIT_FAILURE);
 
@@ -79,18 +78,19 @@ static void nsh_container_startup(uuid_t id, nsh_run_config_t *config)
     if (err)
         exit(EXIT_FAILURE);
 
-    err = nsh_creds_set(&config->creds);
+    err = nsh_creds_set(&params->config.creds);
     if (err)
         exit(EXIT_FAILURE);
 
-    execve(config->exec_path, config->exec_argv, config->exec_argv);
+    execve(params->config.exec_path,
+        params->config.exec_argv, params->config.exec_argv);
 
     perror("[x] Failed to execute container program");
     exit(EXIT_FAILURE);
 }
 
 static pid_t nsh_container_clone(
-    uuid_t id, nsh_run_config_t *config, int cgroup_fd)
+    uuid_t id, nsh_run_params_t *params, int cgroup_fd)
 {
     pid_t pid;
 
@@ -109,34 +109,30 @@ static pid_t nsh_container_clone(
     }
 
     if (pid == 0) {
-        nsh_container_startup(id, config);
+        nsh_container_startup(id, params);
         assert(false);
     }
 
     return pid;
 }
 
-pid_t nsh_run_create(uuid_t id, nsh_run_config_t *config)
+pid_t nsh_run_create(uuid_t id, nsh_run_params_t *params)
 {
     pid_t pid;
     int cgroup_fd;
     int err;
 
-    cgroup_fd = nsh_cgroup_create(id, &config->resources);
+    cgroup_fd = nsh_cgroup_create(id, &params->config.resources);
     if (cgroup_fd == -1)
         goto error;
 
-    printf("[+] Successfully created container cgroup\n");
-
-    pid = nsh_container_clone(id, config, cgroup_fd);
+    pid = nsh_container_clone(id, params, cgroup_fd);
     err = close(cgroup_fd);
 
     if (err)
         perror("[x] Failed to close cgroup file descriptor");
     if (pid == -1 || err)
         goto error_del_cgroup;
-
-    printf("[+] Successfully cloned child\n");
 
     return 0;
 
