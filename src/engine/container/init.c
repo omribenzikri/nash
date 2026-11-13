@@ -15,20 +15,6 @@
 #include "engine/container/config/config.h"
 #include "engine/container/init.h"
 
-static int nsh_run_params_rootfs_path_init(
-    char **rootfs_path, nsh_init_context_t *ctx)
-{
-    assert(ctx->rootfs_path != NULL);
-
-    *rootfs_path = strndup(ctx->rootfs_path, PATH_MAX);
-    if (*rootfs_path == NULL) {
-        perror("[x] Failed to allocate rootfs path");
-        return -1;
-    }
-
-    return 0;
-}
-
 static int nsh_run_config_hostname_init(
     char **hostname, nsh_init_context_t *ctx)
 {
@@ -46,7 +32,7 @@ static int nsh_run_config_hostname_init(
     return 0;
 }
 
-static void nsh_run_config_cwd_pick(
+static void nsh_run_config_workdir_pick(
     nsh_init_context_t *ctx, char **out)
 {
     if (ctx->user_params->config.working_dir != NULL) {
@@ -60,12 +46,12 @@ static void nsh_run_config_cwd_pick(
     }
 }
 
-static int nsh_run_config_cwd_init(
+static int nsh_run_config_workdir_init(
     char **cwd, nsh_init_context_t *ctx)
 {
     char *cwd_temp;
 
-    nsh_run_config_cwd_pick(ctx, &cwd_temp);
+    nsh_run_config_workdir_pick(ctx, &cwd_temp);
 
     *cwd = strndup(cwd_temp, PATH_MAX);
     if (*cwd == NULL) {
@@ -76,7 +62,7 @@ static int nsh_run_config_cwd_init(
     return 0;
 }
 
-static void nsh_run_config_creds_str_pick(
+static void nsh_run_config_creds_pick(
     nsh_init_context_t *ctx, char **out)
 {
     if (ctx->user_params->config.user != NULL) {
@@ -99,7 +85,7 @@ static int nsh_run_config_creds_init(
     int err;
     int ret = 0;
 
-    nsh_run_config_creds_str_pick(ctx, &creds_str);
+    nsh_run_config_creds_pick(ctx, &creds_str);
 
     err = nsh_creds_parse(creds_str, &user, &group);
     if (err) {
@@ -159,80 +145,45 @@ static void nsh_run_config_cmd_pick(
     }
 }
 
-static void nsh_run_config_exec_path_pick(
-    nsh_init_context_t *ctx, char **out)
+static int nsh_run_config_exec_init(
+    char ***exec, size_t *exec_len, nsh_init_context_t *ctx)
 {
     ARRAY_WITH_LEN(char *, entrypoint);
     ARRAY_WITH_LEN(char *, cmd);
-
-    nsh_run_config_entrypoint_pick(ctx, &entrypoint, &entrypoint_len);
-    nsh_run_config_cmd_pick(ctx, &cmd, &cmd_len);
-
-    if (entrypoint == NULL)
-        *out = cmd != NULL ? cmd[0] : NULL;
-    else
-        *out = entrypoint[0];
-}
-
-static int nsh_run_config_exec_path_init(
-    char **exec_path, nsh_init_context_t *ctx)
-{
-    char *exec_path_temp = NULL;
-
-    nsh_run_config_exec_path_pick(ctx, &exec_path_temp);
-    if (exec_path_temp == NULL) {
-        fprintf(stderr, "[x] Container executable path missing\n");
-        return -1;
-    }
-
-    *exec_path = strndup(exec_path_temp, PATH_MAX);
-    if (*exec_path == NULL) {
-        perror("[x] Failed to allocate executable path");
-        return -1;
-    }
-
-    return 0;
-}
-
-static int nsh_run_config_exec_argv_init(
-    char ***exec_argv, nsh_init_context_t *ctx)
-{
-    ARRAY_WITH_LEN(char *, entrypoint);
-    ARRAY_WITH_LEN(char *, cmd);
-    struct cc_array_s *args;
+    struct cc_array_s *exec_temp;
     enum cc_stat cc_stat;
 
-    cc_stat = cc_array_new(&args);
+    cc_stat = cc_array_new(&exec_temp);
     if (cc_stat != CC_OK) {
-        fprintf(stderr, "[x] Failed to allocate args dynarray\n");
+        fprintf(stderr, "[x] Failed to allocate exec dynarray\n");
         goto error;
     }
 
     nsh_run_config_entrypoint_pick(ctx, &entrypoint, &entrypoint_len);
     nsh_run_config_cmd_pick(ctx, &cmd, &cmd_len);
 
-    cc_stat = cc_array_extend_strings(args, entrypoint, entrypoint_len);
+    cc_stat = cc_array_extend_strings(exec_temp, entrypoint, entrypoint_len);
     if (cc_stat != CC_OK)
-        goto error_destroy_args;
+        goto error_destroy_exec_temp;
 
-    cc_stat = cc_array_extend_strings(args, cmd, cmd_len);
+    cc_stat = cc_array_extend_strings(exec_temp, cmd, cmd_len);
     if (cc_stat != CC_OK)
-        goto error_destroy_args;
+        goto error_destroy_exec_temp;
 
-    cc_stat = cc_array_to_vector_shallow(args, (void ***)exec_argv);
+    cc_stat = cc_array_to_static_shallow(exec_temp, (void ***)exec, exec_len);
     if (cc_stat != CC_OK)
-        goto error_destroy_args;
+        goto error_destroy_exec_temp;
 
-    cc_array_destroy(args);
+    cc_array_destroy(exec_temp);
     return 0;
 
-error_destroy_args:
-    cc_array_destroy_cb(args, free);
+error_destroy_exec_temp:
+    cc_array_destroy_cb(exec_temp, free);
 error:
     return -1;
 }
 
-static bool nsh_run_config_env_var_exists(
+static bool nsh_run_config_env_exists(
     struct cc_array_s *existing, const char *var)
 {
     char *existing_var;
@@ -260,7 +211,7 @@ static int nsh_run_config_env_apply_source(
             return -1;
         }
 
-        if (nsh_run_config_env_var_exists(vars, var))
+        if (nsh_run_config_env_exists(vars, var))
             continue;
 
         cc_stat = cc_array_add_string(vars, var);
@@ -273,41 +224,41 @@ static int nsh_run_config_env_apply_source(
     return 0;
 }
 
-static int nsh_run_config_exec_envp_init(
-    char ***exec_envp, nsh_init_context_t *ctx)
+static int nsh_run_config_env_init(
+    char ***env, size_t *env_len, nsh_init_context_t *ctx)
 {
-    struct cc_array_s *vars;
+    struct cc_array_s *env_temp;
     enum cc_stat cc_stat;
     int err;
 
-    cc_stat = cc_array_new(&vars);
+    cc_stat = cc_array_new(&env_temp);
     if (cc_stat != CC_OK) {
         fprintf(stderr, "[x] Failed to allocate env dynarray");
         goto error;
     }
 
-    err = nsh_run_config_env_apply_source(vars,
+    err = nsh_run_config_env_apply_source(env_temp,
         ctx->user_params->config.env,
         ctx->user_params->config.env_len);
     if (err)
-        goto error_destroy_env;
+        goto error_destroy_env_temp;
 
-    err = nsh_run_config_env_apply_source(vars,
+    err = nsh_run_config_env_apply_source(env_temp,
         ctx->image_config->env,
         ctx->image_config->env_len);
     if (err)
-        goto error_destroy_env;
+        goto error_destroy_env_temp;
 
-    cc_stat = cc_array_to_vector_shallow(vars, (void ***)exec_envp);
+    cc_stat = cc_array_to_static_shallow(env_temp, (void ***)env, env_len);
     if (cc_stat != CC_OK)
-        goto error_destroy_env;
+        goto error_destroy_env_temp;
 
-    cc_array_destroy(vars);
+    cc_array_destroy(env_temp);
 
     return 0;
 
-error_destroy_env:
-    cc_array_destroy_cb(vars, free);
+error_destroy_env_temp:
+    cc_array_destroy_cb(env_temp, free);
 error:
     return -1;
 }
@@ -320,36 +271,31 @@ int nsh_run_config_init(nsh_run_config_t *config, nsh_init_context_t *ctx)
     if (err)
         goto error;
 
-    err = nsh_run_config_exec_path_init(&config->exec_path, ctx);
+    err = nsh_run_config_workdir_init(&config->workdir, ctx);
     if (err)
         goto error_free_hostname;
 
-    err = nsh_run_config_exec_argv_init(&config->exec_argv, ctx);
+    err = nsh_run_config_exec_init(&config->exec, &config->exec_len, ctx);
     if (err)
-        goto error_free_exec_path;
+        goto error_free_workdir;
 
-    err = nsh_run_config_exec_envp_init(&config->exec_envp, ctx);
+    err = nsh_run_config_env_init(&config->env, &config->env_len, ctx);
     if (err)
-        goto error_free_exec_argv;
-
-    err = nsh_run_config_cwd_init(&config->cwd, ctx);
-    if (err)
-        goto error_free_exec_envp;
+        goto error_free_exec;
 
     err = nsh_run_config_creds_init(&config->creds, ctx);
     if (err)
-        goto error_free_exec_cwd;
+        goto error_free_env;
 
     return 0;
 
-error_free_exec_cwd:
-    free(config->cwd);
-error_free_exec_envp:
-    ARRAY_FREE_DEEP(config->exec_envp);
-error_free_exec_argv:
-    ARRAY_FREE_DEEP(config->exec_argv);
-error_free_exec_path:
-    free(config->exec_path);
+
+error_free_env:
+    ARRAY_FREE_DEEP(config->env);
+error_free_exec:
+    ARRAY_FREE_DEEP(config->exec);
+error_free_workdir:
+    free(config->workdir);
 error_free_hostname:
     free(config->hostname);
 error:
@@ -359,12 +305,24 @@ error:
 void nsh_run_config_destroy(nsh_run_config_t *config)
 {
     nsh_run_config_creds_destroy(&config->creds);
-
-    free(config->cwd);
-    ARRAY_FREE_DEEP(config->exec_envp);
-    ARRAY_FREE_DEEP(config->exec_argv);
-    free(config->exec_path);
+    ARRAY_FREE_DEEP(config->env);
+    ARRAY_FREE_DEEP(config->exec);
+    free(config->workdir);
     free(config->hostname);
+}
+
+static int nsh_run_params_rootfs_path_init(
+    char **rootfs_path, nsh_init_context_t *ctx)
+{
+    assert(ctx->rootfs_path != NULL);
+
+    *rootfs_path = strndup(ctx->rootfs_path, PATH_MAX);
+    if (*rootfs_path == NULL) {
+        perror("[x] Failed to allocate rootfs path");
+        return -1;
+    }
+
+    return 0;
 }
 
 int nsh_run_params_init(nsh_run_params_t *params, nsh_init_context_t *ctx)

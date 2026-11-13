@@ -366,7 +366,7 @@ int nsh_creds_resolve(const char *user, const char *group,
         }
     }
 
-    cc_stat = cc_array_to_vector_values(sup_gids, sizeof(gid_t),
+    cc_stat = cc_array_to_static_values(sup_gids, sizeof(gid_t),
         (void **)&out->sup_gids, &out->sup_gids_len);
 
     if (cc_stat != CC_OK) {

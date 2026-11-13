@@ -5,9 +5,12 @@
 #include <collectc/cc_common.h>
 #include <collectc/cc_array.h>
 
-enum cc_stat cc_array_to_vector_shallow(CC_Array *ar, void ***out);
-enum cc_stat cc_array_to_vector_values(CC_Array *ar, size_t elsize,
-    void **outp, size_t *outl);
+void **array_realloc_nullterm_shallow(void **ptr, size_t size);
+
+enum cc_stat cc_array_to_static_shallow(
+    CC_Array *ar, void ***outp, size_t *outl);
+enum cc_stat cc_array_to_static_values(
+    CC_Array *ar, size_t elsize, void **outp, size_t *outl);
 
 enum cc_stat cc_array_add_value(CC_Array *ar, void *val, size_t size);
 enum cc_stat cc_array_add_string(CC_Array *ar, const char *str);

@@ -12,6 +12,7 @@
 #include <sys/syscall.h>
 #include <linux/sched.h>
 #include <uuid/uuid.h>
+#include "utils/array.h"
 #include "runtime/filesystem.h"
 #include "runtime/resources.h"
 #include "runtime/capabilities.h"
@@ -52,6 +53,48 @@ static int nsh_hostname_set(uuid_t container_id, const char *name)
     return 0;
 }
 
+static int nsh_container_exec(nsh_run_config_t *config)
+{
+    char *exec_path;
+    char **exec_argv;
+    char **exec_envp;
+
+    if (config->exec_len < 1) {
+        fprintf(stderr,
+            "[x] Failed to execute container program: "
+            "no executable provided\n");
+        goto error;
+    }
+
+    exec_path = config->exec[0];
+
+    exec_argv = (char **)array_realloc_nullterm_shallow(
+        (void **)config->exec, config->exec_len);
+    if (exec_argv == NULL) {
+        fprintf(stderr, "[x] Failed to allocate argv vector\n");
+        goto error;
+    }
+
+    exec_envp = (char **)array_realloc_nullterm_shallow(
+        (void **)config->env, config->env_len);
+    if (exec_envp == NULL) {
+        fprintf(stderr, "[x] Failed to allocate envp vector\n");
+        goto error_free_argv;
+    }
+
+    execve(exec_path, exec_argv, exec_argv);
+
+    perror("[x] Failed to execute container program");
+    goto error_free_envp;
+
+error_free_envp:
+    free(exec_envp);
+error_free_argv:
+    free(exec_argv);
+error:
+    return -1;
+}
+
 static void nsh_container_startup(uuid_t id, nsh_run_params_t *params)
 {
     int err;
@@ -62,7 +105,7 @@ static void nsh_container_startup(uuid_t id, nsh_run_params_t *params)
 
     umask(0);
 
-    err = nsh_fs_pivot_root(params->rootfs_path, params->config.cwd);
+    err = nsh_fs_pivot_root(params->rootfs_path, params->config.workdir);
     if (err)
         exit(EXIT_FAILURE);
 
@@ -82,10 +125,7 @@ static void nsh_container_startup(uuid_t id, nsh_run_params_t *params)
     if (err)
         exit(EXIT_FAILURE);
 
-    execve(params->config.exec_path,
-        params->config.exec_argv, params->config.exec_argv);
-
-    perror("[x] Failed to execute container program");
+    nsh_container_exec(&params->config);
     exit(EXIT_FAILURE);
 }
 

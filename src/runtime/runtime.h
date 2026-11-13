@@ -3,15 +3,15 @@
 
 #include <uuid/uuid.h>
 #include <sys/types.h>
+#include "utils/macros.h"
 #include "runtime/resources.h"
 #include "runtime/creds.h"
 
 typedef struct {
     char *hostname;
-    char *cwd;
-    char *exec_path;
-    char **exec_argv;
-    char **exec_envp;
+    char *workdir;
+    ARRAY_WITH_LEN(char *, exec);
+    ARRAY_WITH_LEN(char *, env);
     nsh_creds_t creds;
     nsh_resources_t resources;
 } nsh_run_config_t;
