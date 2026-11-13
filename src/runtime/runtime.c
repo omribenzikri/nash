@@ -15,6 +15,7 @@
 #include "runtime/filesystem.h"
 #include "runtime/resources.h"
 #include "runtime/capabilities.h"
+#include "runtime/creds.h"
 #include "runtime/runtime.h"
 
 #define NSH_GEN_HOSTNAME_LEN 13
@@ -75,6 +76,10 @@ static void nsh_container_startup(uuid_t id, nsh_runtime_config_t *config)
         exit(EXIT_FAILURE);
 
     err = nsh_cap_drop();
+    if (err)
+        exit(EXIT_FAILURE);
+
+    err = nsh_creds_set(&config->creds);
     if (err)
         exit(EXIT_FAILURE);
 

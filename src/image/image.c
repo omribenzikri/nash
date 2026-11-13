@@ -142,6 +142,11 @@ char *nsh_image_config_working_dir(nsh_image_t *image)
     return image->oci.config->config->working_dir;
 }
 
+char *nsh_image_config_user(nsh_image_t *image)
+{
+    return image->oci.config->config->user;
+}
+
 char **nsh_image_config_entrypoint(nsh_image_t *image)
 {
     return image->oci.config->config->entrypoint;

@@ -5,10 +5,9 @@
 #include <stdbool.h>
 #include <string.h>
 #include <limits.h>
-#include <errno.h>
 #include <getopt.h>
-#include <inttypes.h>
 #include <sys/wait.h>
+#include "utils/string.h"
 #include "resources/container.h"
 #include "startup.h"
 
@@ -16,6 +15,7 @@
 
 enum {
     NSH_OPT_ENV,
+    NSH_OPT_USER,
     NSH_OPT_HOSTNAME,
     NSH_OPT_ENTRYPOINT,
     NSH_OPT_WORKDIR,
@@ -28,6 +28,7 @@ enum {
 static const struct option nsh_options[] = {
     { "hostname",    required_argument, NULL, NSH_OPT_HOSTNAME },
     { "env",         required_argument, NULL, NSH_OPT_ENV },
+    { "user",        required_argument, NULL, NSH_OPT_USER },
     { "entrypoint",  required_argument, NULL, NSH_OPT_ENTRYPOINT },
     { "workdir",     required_argument, NULL, NSH_OPT_WORKDIR },
     { "cpu-time",    required_argument, NULL, NSH_OPT_CPU_TIME },
@@ -36,24 +37,6 @@ static const struct option nsh_options[] = {
     { "memory-swap", required_argument, NULL, NSH_OPT_MEMORY_SWAP },
     { NULL,          0,                 NULL,  0  }
 };
-
-static int nsh_parse_uint(const char *str, uintmax_t max, uintmax_t *result)
-{
-    char *end;
-    uintmax_t value;
-
-    if (str == NULL || *str == '\0' || *str == '-')
-        return -1;
-
-    errno = 0;
-    value = strtoumax(str, &end, 10);
-
-    if (errno == ERANGE || end == str || *end != '\0' || value > max)
-        return -1;
-
-    *result = value;
-    return 0;
-}
 
 static int nsh_parse_options(int argc, char **argv, nsh_container_params_t *params)
 {
@@ -79,6 +62,9 @@ static int nsh_parse_options(int argc, char **argv, nsh_container_params_t *para
             env[env_len] = optarg;
             env_len++;
             break;
+        case NSH_OPT_USER:
+            params->config.user = optarg;
+            break;
         case NSH_OPT_ENTRYPOINT:
             if (strlen(optarg) > PATH_MAX)
                 return -1;
@@ -92,27 +78,27 @@ static int nsh_parse_options(int argc, char **argv, nsh_container_params_t *para
             params->config.working_dir = optarg;
             break;
         case NSH_OPT_CPU_TIME:
-            err = nsh_parse_uint(optarg, UINT8_MAX,
-                                (uintmax_t *)&params->resources.cpu_time);
+            err = str_parse_uintmax(optarg, UINT8_MAX,
+                (uintmax_t *)&params->resources.cpu_time);
             if (err ||params->resources.cpu_time == 0
                     || params->resources.cpu_time > 100)
                 return -1;
             break;
         case NSH_OPT_PROCS:
-            err = nsh_parse_uint(optarg, UINT32_MAX,
-                                (uintmax_t *)&params->resources.procs);
+            err = str_parse_uintmax(optarg, UINT32_MAX,
+                (uintmax_t *)&params->resources.procs);
             if (err)
                 return -1;
             break;
         case NSH_OPT_MEMORY:
-            err = nsh_parse_uint(optarg, UINT64_MAX,
-                                (uintmax_t *)&params->resources.memory_bytes);
+            err = str_parse_uintmax(optarg, UINT64_MAX,
+                (uintmax_t *)&params->resources.memory_bytes);
             if (err)
                 return -1;
             break;
         case NSH_OPT_MEMORY_SWAP:
-            err = nsh_parse_uint(optarg, UINT64_MAX,
-                                (uintmax_t *)&params->resources.memory_swap_bytes);
+            err = str_parse_uintmax(optarg, UINT64_MAX,
+                (uintmax_t *)&params->resources.memory_swap_bytes);
             if (err)
                 return -1;
             break;

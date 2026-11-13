@@ -30,14 +30,20 @@ static void nsh_load_image_config(
     config->cmd = nsh_image_config_cmd(image);
     config->cmd_len = nsh_image_config_cmd_len(image);
     config->working_dir = nsh_image_config_working_dir(image);
+    config->user = nsh_image_config_user(image);
 }
 
 static int nsh_container_init_internal(
     nsh_container_t *container, nsh_image_t *image,
-    nsh_container_params_t *params)
+    nsh_container_params_t *user_params)
 {
     char rootfs_path[PATH_MAX];
     nsh_container_config_t image_config = {0};
+    nsh_runcfg_init_params_t runcfg_params = {
+        .rootfs_path = rootfs_path,
+        .user_params = user_params,
+        .image_config = &image_config
+    };
     int err;
 
     uuid_generate_random(container->id);
@@ -56,8 +62,7 @@ static int nsh_container_init_internal(
 
     nsh_load_image_config(image, &image_config);
 
-    err = nsh_runtime_config_init(
-        &container->runtime_config, params, &image_config, rootfs_path);
+    err = nsh_runtime_config_init(&container->runtime_config, &runcfg_params);
     if (err)
         goto error_destroy_rootfs;
 
