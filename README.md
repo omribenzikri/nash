@@ -10,10 +10,11 @@ Linux container engine POC in the works.
 4. Restricting container CPU time, processes, memory and swap via cgroupv2
 5. Whitelisting capabilities
 
-#### Image
+##### Engine
 1. Parsing OCI image metadata
 2. Unpacking layers in order, and applying whiteouts
 3. Merging layers via overlayfs mount
+4. Applying image config + user overrides
 
 #### Dependencies
 * `libuuid`
