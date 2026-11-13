@@ -12,7 +12,7 @@
 
 #define NSH_CGROUP_PAYLOAD_SIZE 128
 
-static int nsh_write_to_cgroup_file(int cgroup_fd, const char *name, const char *payload)
+static int nsh_cgroup_write_file(int cgroup_fd, const char *name, const char *payload)
 {
     char log[128];
     int fd;
@@ -35,7 +35,7 @@ static int nsh_write_to_cgroup_file(int cgroup_fd, const char *name, const char 
     return 0;
 }
 
-static void nsh_format_cpu_max_payload(char *buf, size_t size, float value)
+static void nsh_cgroup_cpu_max_payload_format(float value, char *buf, size_t size)
 {
     const int duration_us = 100000;
     int max_us;
@@ -46,15 +46,15 @@ static void nsh_format_cpu_max_payload(char *buf, size_t size, float value)
     snprintf(buf, size, "%d %d", max_us, duration_us);
 }
 
-static int nsh_apply_resource_limits(int cgroup_fd, nsh_resources_t *resources)
+static int nsh_cgroup_apply_limits(int cgroup_fd, nsh_resources_t *resources)
 {
     int err;
     char payload[NSH_CGROUP_PAYLOAD_SIZE];
 
     if (resources->cpu_time > 0) {
-        nsh_format_cpu_max_payload(payload, sizeof(payload), resources->cpu_time);
+        nsh_cgroup_cpu_max_payload_format(resources->cpu_time, payload, sizeof(payload));
 
-        err = nsh_write_to_cgroup_file(cgroup_fd, "cpu.max", payload);
+        err = nsh_cgroup_write_file(cgroup_fd, "cpu.max", payload);
         if (err) {
             fprintf(stderr, "[x] Failed to set CPU time limit\n");
             return -1;
@@ -64,7 +64,7 @@ static int nsh_apply_resource_limits(int cgroup_fd, nsh_resources_t *resources)
     if (resources->memory_bytes > 0) {
         snprintf(payload, sizeof(payload), "%lu", resources->memory_bytes);
 
-        err = nsh_write_to_cgroup_file(cgroup_fd, "memory.max", payload);
+        err = nsh_cgroup_write_file(cgroup_fd, "memory.max", payload);
         if (err) {
             fprintf(stderr, "[x] Failed to set memory limit\n");
             return -1;
@@ -74,7 +74,7 @@ static int nsh_apply_resource_limits(int cgroup_fd, nsh_resources_t *resources)
     if (resources->memory_swap_bytes > 0) {
         snprintf(payload, sizeof(payload), "%lu", resources->memory_swap_bytes);
 
-        err = nsh_write_to_cgroup_file(cgroup_fd, "memory.swap.max", payload);
+        err = nsh_cgroup_write_file(cgroup_fd, "memory.swap.max", payload);
         if (err) {
             fprintf(stderr, "[x] Failed to set swap limit\n");
             return -1;
@@ -84,7 +84,7 @@ static int nsh_apply_resource_limits(int cgroup_fd, nsh_resources_t *resources)
     if (resources->procs > 0) {
         snprintf(payload, sizeof(payload), "%u", resources->procs);
 
-        err = nsh_write_to_cgroup_file(cgroup_fd, "pids.max", payload);
+        err = nsh_cgroup_write_file(cgroup_fd, "pids.max", payload);
         if (err) {
             fprintf(stderr, "[x] Failed to set processes limit\n");
             return -1;
@@ -94,7 +94,7 @@ static int nsh_apply_resource_limits(int cgroup_fd, nsh_resources_t *resources)
     return 0;
 }
 
-static void nsh_resolve_cgroup_path(uuid_t container_id, char *buf, size_t size)
+static void nsh_cgroup_resolve_path(uuid_t container_id, char *buf, size_t size)
 {
     char uuid_string[UUID_STR_LEN];
 
@@ -108,7 +108,7 @@ int nsh_cgroup_create(uuid_t container_id, nsh_resources_t *resources)
     int fd;
     int err;
 
-    nsh_resolve_cgroup_path(container_id, path, sizeof(path));
+    nsh_cgroup_resolve_path(container_id, path, sizeof(path));
 
     err = mkdir(path, S_IRWXU);
     if (err) {
@@ -122,7 +122,7 @@ int nsh_cgroup_create(uuid_t container_id, nsh_resources_t *resources)
         goto error_del_cgroup;
     }
 
-    err = nsh_apply_resource_limits(fd, resources);
+    err = nsh_cgroup_apply_limits(fd, resources);
     if (err)
         goto error_del_cgroup;
 
@@ -139,7 +139,7 @@ int nsh_cgroup_delete(uuid_t container_id)
     char path[PATH_MAX];
     int err;
 
-    nsh_resolve_cgroup_path(container_id, path, sizeof(path));
+    nsh_cgroup_resolve_path(container_id, path, sizeof(path));
 
     err = rmdir(path);
     if (err) {

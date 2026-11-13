@@ -32,9 +32,9 @@ typedef struct {
 } nsh_runcfg_init_params_t;
 
 int nsh_runtime_config_init(
-    nsh_runtime_config_t *config,
+    nsh_run_config_t *config,
     nsh_runcfg_init_params_t *params);
 
-void nsh_runtime_config_destroy(nsh_runtime_config_t *config);
+void nsh_runtime_config_destroy(nsh_run_config_t *config);
 
 #endif

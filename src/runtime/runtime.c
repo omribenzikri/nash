@@ -52,7 +52,7 @@ static int nsh_hostname_set(uuid_t container_id, const char *name)
     return 0;
 }
 
-static void nsh_container_startup(uuid_t id, nsh_runtime_config_t *config)
+static void nsh_container_startup(uuid_t id, nsh_run_config_t *config)
 {
     int err;
 
@@ -67,15 +67,15 @@ static void nsh_container_startup(uuid_t id, nsh_runtime_config_t *config)
     if (err)
         exit(EXIT_FAILURE);
 
-    err = nsh_fs_mount_essentials();
+    err = nsh_fs_mount();
     if (err)
         exit(EXIT_FAILURE);
 
-    err = nsh_fs_populate_dev();
+    err = nsh_fs_populate();
     if (err)
         exit(EXIT_FAILURE);
 
-    err = nsh_cap_drop();
+    err = nsh_caps_drop();
     if (err)
         exit(EXIT_FAILURE);
 
@@ -90,7 +90,7 @@ static void nsh_container_startup(uuid_t id, nsh_runtime_config_t *config)
 }
 
 static pid_t nsh_container_clone(
-    uuid_t id, nsh_runtime_config_t *config, int cgroup_fd)
+    uuid_t id, nsh_run_config_t *config, int cgroup_fd)
 {
     pid_t pid;
 
@@ -116,7 +116,7 @@ static pid_t nsh_container_clone(
     return pid;
 }
 
-pid_t nsh_runtime_container_create(uuid_t id, nsh_runtime_config_t *config)
+pid_t nsh_run_create(uuid_t id, nsh_run_config_t *config)
 {
     pid_t pid;
     int cgroup_fd;
@@ -146,7 +146,7 @@ error:
     return -1;
 }
 
-void nsh_runtime_container_cleanup(uuid_t id)
+void nsh_run_cleanup(uuid_t id)
 {
     nsh_cgroup_delete(id);
 }

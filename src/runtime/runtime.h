@@ -15,9 +15,9 @@ typedef struct {
     char **exec_envp;
     nsh_creds_t creds;
     nsh_resources_t resources;
-} nsh_runtime_config_t;
+} nsh_run_config_t;
 
-pid_t nsh_runtime_container_create(uuid_t id, nsh_runtime_config_t *config);
-void nsh_runtime_container_cleanup(uuid_t id);
+pid_t nsh_run_create(uuid_t id, nsh_run_config_t *config);
+void nsh_run_cleanup(uuid_t id);
 
 #endif

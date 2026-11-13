@@ -139,7 +139,7 @@ static int nsh_create_dev_symlinks()
     return 0;
 }
 
-int nsh_fs_populate_dev()
+static int nsh_fs_populate_dev()
 {
     int err;
 
@@ -158,7 +158,12 @@ int nsh_fs_populate_dev()
     return 0;
 }
 
-int nsh_fs_mount_essentials()
+int nsh_fs_populate()
+{
+    return nsh_fs_populate_dev();
+}
+
+int nsh_fs_mount()
 {
     int err;
 

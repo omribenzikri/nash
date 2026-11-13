@@ -312,7 +312,7 @@ error:
 }
 
 int nsh_runtime_config_init(
-    nsh_runtime_config_t *config,
+    nsh_run_config_t *config,
     nsh_runcfg_init_params_t *params)
 {
     int err;
@@ -363,7 +363,7 @@ error:
     return -1;
 }
 
-void nsh_runtime_config_destroy(nsh_runtime_config_t *config)
+void nsh_runtime_config_destroy(nsh_run_config_t *config)
 {
     nsh_runtime_config_creds_destroy(&config->creds);
 

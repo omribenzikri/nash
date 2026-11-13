@@ -34,7 +34,7 @@ static int nsh_cap_is_allowed(cap_value_t cap)
     return false;
 }
 
-static int nsh_cap_populate_set(cap_t caps, cap_flag_t set)
+static int nsh_caps_set_populate(cap_t caps, cap_flag_t set)
 {
     int err;
 
@@ -48,7 +48,7 @@ static int nsh_cap_populate_set(cap_t caps, cap_flag_t set)
     return 0;
 }
 
-static int nsh_cap_standard_sets_restrict()
+static int nsh_caps_standard_sets_restrict()
 {
     cap_t caps;
     int ret = 0;
@@ -61,9 +61,9 @@ static int nsh_cap_standard_sets_restrict()
         goto out;
     }
 
-    err = nsh_cap_populate_set(caps, CAP_EFFECTIVE) ||
-          nsh_cap_populate_set(caps, CAP_PERMITTED) ||
-          nsh_cap_populate_set(caps, CAP_INHERITABLE);
+    err = nsh_caps_set_populate(caps, CAP_EFFECTIVE) ||
+          nsh_caps_set_populate(caps, CAP_PERMITTED) ||
+          nsh_caps_set_populate(caps, CAP_INHERITABLE);
     if (err) {
         ret = -1;
         goto out_free_caps;
@@ -86,7 +86,7 @@ out:
     return ret;
 }
 
-static int nsh_cap_bounding_set_restrict()
+static int nsh_caps_bounding_set_restrict()
 {
     int err;
 
@@ -104,7 +104,7 @@ static int nsh_cap_bounding_set_restrict()
     return 0;
 }
 
-static int nsh_cap_ambient_set_clear()
+static int nsh_caps_ambient_set_clear()
 {
     int err;
 
@@ -130,10 +130,10 @@ static int nsh_set_no_new_privs()
     return 0;
 }
 
-int nsh_cap_drop()
+int nsh_caps_drop()
 {
     return nsh_set_no_new_privs()          ||
-           nsh_cap_bounding_set_restrict() ||
-           nsh_cap_ambient_set_clear()     ||
-           nsh_cap_standard_sets_restrict();
+           nsh_caps_bounding_set_restrict() ||
+           nsh_caps_ambient_set_clear()     ||
+           nsh_caps_standard_sets_restrict();
 }

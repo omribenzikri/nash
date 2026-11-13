@@ -128,7 +128,7 @@ nsh_container_t *nsh_engine_container_create(nsh_container_params_t *params)
     if (err)
         goto error_free_container;
 
-    container->pid = nsh_runtime_container_create(
+    container->pid = nsh_run_create(
         container->id, &container->runtime_config);
     if (container->pid == -1)
         goto error_cleanup_destroy_container;
@@ -146,7 +146,7 @@ error:
 
 void nsh_engine_container_delete(nsh_container_t *container)
 {
-    nsh_runtime_container_cleanup(container->id);
+    nsh_run_cleanup(container->id);
     nsh_container_cleanup(container);
 }
 
