@@ -123,7 +123,7 @@ static void nsh_container_startup(uuid_t id, nsh_run_params_t *params)
     exit(EXIT_FAILURE);
 }
 
-static pid_t nsh_container_clone(
+static pid_t nsh_run_clone(
     uuid_t id, nsh_run_params_t *params, int cgroup_fd)
 {
     pid_t pid;
@@ -150,22 +150,32 @@ static pid_t nsh_container_clone(
     return pid;
 }
 
+static pid_t nsh_run_start(uuid_t id, nsh_run_params_t *params)
+{
+    int cgroup_fd;
+    pid_t pid;
+
+    cgroup_fd = nsh_cgroup_open(id);
+    if (cgroup_fd == -1)
+        return -1;
+
+    pid = nsh_run_clone(id, params, cgroup_fd);
+    close(cgroup_fd);
+
+    return pid;
+}
+
 pid_t nsh_run_create(uuid_t id, nsh_run_params_t *params)
 {
     pid_t pid;
-    int cgroup_fd;
     int err;
 
-    cgroup_fd = nsh_cgroup_create(id, &params->config.resources);
-    if (cgroup_fd == -1)
+    err = nsh_cgroup_create(id, &params->config.resources);
+    if (err)
         goto error;
 
-    pid = nsh_container_clone(id, params, cgroup_fd);
-    err = close(cgroup_fd);
-
-    if (err)
-        perror("[x] Failed to close cgroup file descriptor");
-    if (pid == -1 || err)
+    pid = nsh_run_start(id, params);
+    if (pid == -1)
         goto error_del_cgroup;
 
     return 0;

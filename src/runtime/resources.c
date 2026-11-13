@@ -10,29 +10,32 @@
 #include <uuid/uuid.h>
 #include "runtime/resources.h"
 
-#define NSH_CGROUP_PAYLOAD_SIZE 128
+#define NSH_CGROUP_PAYLOAD_MAX_SIZE 128
 
 static int nsh_cgroup_write_file(int cgroup_fd, const char *name, const char *payload)
 {
-    char log[128];
     int fd;
     ssize_t nwritten;
+    int ret = 0;
 
     fd = openat(cgroup_fd, name, O_WRONLY);
     if (fd == -1) {
-        snprintf(log, sizeof(log), "[x] Failed to open %s in container cgroup\n", name);
-        perror(log);
-        return -1;
+        perror("[x] Failed to open cgroup interface file");
+        ret = -1;
+        goto out;
     }
 
     nwritten = write(fd, payload, strlen(payload));
     if (nwritten == -1) {
-        snprintf(log, sizeof(log), "[x] Failed to write to %s in container cgroup\n", name);
-        perror(log);
-        return -1;
+        perror("[x] Failed to write to cgroup interface file");
+        ret = -1;
+        goto out_close;
     }
 
-    return 0;
+out_close:
+    close(fd);
+out:
+    return ret;
 }
 
 static void nsh_cgroup_cpu_max_payload_format(float value, char *buf, size_t size)
@@ -49,7 +52,7 @@ static void nsh_cgroup_cpu_max_payload_format(float value, char *buf, size_t siz
 static int nsh_cgroup_apply_limits(int cgroup_fd, nsh_resources_t *resources)
 {
     int err;
-    char payload[NSH_CGROUP_PAYLOAD_SIZE];
+    char payload[NSH_CGROUP_PAYLOAD_MAX_SIZE];
 
     if (resources->cpu_time > 0) {
         nsh_cgroup_cpu_max_payload_format(resources->cpu_time, payload, sizeof(payload));
@@ -94,7 +97,7 @@ static int nsh_cgroup_apply_limits(int cgroup_fd, nsh_resources_t *resources)
     return 0;
 }
 
-static void nsh_cgroup_resolve_path(uuid_t container_id, char *buf, size_t size)
+static void nsh_cgroup_path_resolve(uuid_t container_id, char *buf, size_t size)
 {
     char uuid_string[UUID_STR_LEN];
 
@@ -102,13 +105,36 @@ static void nsh_cgroup_resolve_path(uuid_t container_id, char *buf, size_t size)
     snprintf(buf, size, "/sys/fs/cgroup/system.slice/nash-%s.scope", uuid_string);
 }
 
+static int nsh_cgroup_init(uuid_t container_id, nsh_resources_t *resources)
+{
+    int fd;
+    int err;
+    int ret = 0;
+
+    fd = nsh_cgroup_open(container_id);
+    if (fd == -1) {
+        ret = -1;
+        goto out;
+    }
+
+    err = nsh_cgroup_apply_limits(fd, resources);
+    if (err) {
+        ret = -1;
+        goto out_close;
+    }
+
+out_close:
+    close(fd);
+out:
+    return ret;
+}
+
 int nsh_cgroup_create(uuid_t container_id, nsh_resources_t *resources)
 {
     char path[PATH_MAX];
-    int fd;
     int err;
 
-    nsh_cgroup_resolve_path(container_id, path, sizeof(path));
+    nsh_cgroup_path_resolve(container_id, path, sizeof(path));
 
     err = mkdir(path, S_IRWXU);
     if (err) {
@@ -116,17 +142,11 @@ int nsh_cgroup_create(uuid_t container_id, nsh_resources_t *resources)
         goto error;
     }
 
-    fd = open(path, O_DIRECTORY | O_PATH);
-    if (fd == -1) {
-        perror("[x] Failed to open container cgroup");
-        goto error_del_cgroup;
-    }
-
-    err = nsh_cgroup_apply_limits(fd, resources);
+    err = nsh_cgroup_init(container_id, resources);
     if (err)
         goto error_del_cgroup;
 
-    return fd;
+    return 0;
 
 error_del_cgroup:
     nsh_cgroup_delete(container_id);
@@ -134,12 +154,28 @@ error:
     return -1;
 }
 
+int nsh_cgroup_open(uuid_t container_id)
+{
+    char path[PATH_MAX];
+    int fd;
+
+    nsh_cgroup_path_resolve(container_id, path, sizeof(path));
+
+    fd = open(path, O_DIRECTORY | O_PATH);
+    if (fd == -1) {
+        perror("[x] Failed to open container cgroup");
+        return -1;
+    }
+
+    return fd;
+}
+
 int nsh_cgroup_delete(uuid_t container_id)
 {
     char path[PATH_MAX];
     int err;
 
-    nsh_cgroup_resolve_path(container_id, path, sizeof(path));
+    nsh_cgroup_path_resolve(container_id, path, sizeof(path));
 
     err = rmdir(path);
     if (err) {
