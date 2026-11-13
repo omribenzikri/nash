@@ -5,26 +5,40 @@
 #include <collectc/cc_array.h>
 #include "utils/array.h"
 
-enum cc_stat cc_array_to_vector_shallow(CC_Array *ar, void ***out)
+void **array_realloc_nullterm_shallow(void **ptr, size_t len)
+{
+    void **new;
+
+    new = realloc(ptr, (len + 1) * sizeof(*ptr));
+    if (new == NULL)
+        return NULL;
+
+    new[len] = NULL;
+    return new;
+}
+
+
+enum cc_stat cc_array_to_static_shallow(
+    CC_Array *ar, void ***outp, size_t *outl)
 {
     size_t size;
     void **buf;
 
     size = cc_array_size(ar);
-    buf = calloc(size + 1, sizeof(*buf));
+    buf = calloc(size, sizeof(*buf));
     if (buf == NULL)
         return CC_ERR_ALLOC;
 
     for (size_t i = 0; i < size; i++)
         cc_array_get_at(ar, i, &buf[i]);
 
-    buf[size] = NULL;
-    *out = buf;
+    *outp = buf;
+    *outl = size;
 
     return CC_OK;
 }
 
-enum cc_stat cc_array_to_vector_values(
+enum cc_stat cc_array_to_static_values(
     CC_Array *ar, size_t elsize, void **outp, size_t *outl)
 {
     size_t size;

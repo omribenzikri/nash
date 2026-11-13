@@ -12,6 +12,7 @@
 #include <sys/syscall.h>
 #include <linux/sched.h>
 #include <uuid/uuid.h>
+#include "utils/array.h"
 #include "runtime/filesystem.h"
 #include "runtime/resources.h"
 #include "runtime/capabilities.h"
@@ -52,45 +53,78 @@ static int nsh_hostname_set(uuid_t container_id, const char *name)
     return 0;
 }
 
-static void nsh_container_startup(uuid_t id, nsh_runtime_config_t *config)
+static int nsh_container_exec(nsh_run_config_t *config)
+{
+    char *exec_path;
+    char **exec_argv;
+    char **exec_envp;
+
+    if (config->exec_len < 1) {
+        fprintf(stderr,
+            "[x] Failed to execute container program: "
+            "no executable provided\n");
+        goto error;
+    }
+
+    exec_path = config->exec[0];
+
+    exec_argv = (char **)array_realloc_nullterm_shallow(
+        (void **)config->exec, config->exec_len);
+    if (exec_argv == NULL) {
+        fprintf(stderr, "[x] Failed to allocate argv vector\n");
+        goto error;
+    }
+
+    exec_envp = (char **)array_realloc_nullterm_shallow(
+        (void **)config->env, config->env_len);
+    if (exec_envp == NULL) {
+        fprintf(stderr, "[x] Failed to allocate envp vector\n");
+        goto error_free_argv;
+    }
+
+    execve(exec_path, exec_argv, exec_envp);
+
+    perror("[x] Failed to execute container program");
+    goto error_free_envp;
+
+error_free_envp:
+    free(exec_envp);
+error_free_argv:
+    free(exec_argv);
+error:
+    return -1;
+}
+
+static void nsh_container_startup(uuid_t id, nsh_run_params_t *params)
 {
     int err;
 
-    err = nsh_hostname_set(id, config->hostname);
+    err = nsh_hostname_set(id, params->config.hostname);
     if (err)
         exit(EXIT_FAILURE);
 
-    umask(0);
-
-    err = nsh_fs_pivot_root(config->rootfs_path,
-                            config->cwd);
+    err = nsh_fs_pivot_root(params->rootfs_path, params->config.workdir);
     if (err)
         exit(EXIT_FAILURE);
 
-    err = nsh_fs_mount_essentials();
+    err = nsh_fs_prepare();
     if (err)
         exit(EXIT_FAILURE);
 
-    err = nsh_fs_populate_dev();
+    err = nsh_caps_drop();
     if (err)
         exit(EXIT_FAILURE);
 
-    err = nsh_cap_drop();
+    err = nsh_creds_set(&params->config.creds);
     if (err)
         exit(EXIT_FAILURE);
 
-    err = nsh_creds_set(&config->creds);
-    if (err)
-        exit(EXIT_FAILURE);
-
-    execve(config->exec_path, config->exec_argv, config->exec_argv);
-
-    perror("[x] Failed to execute container program");
+    nsh_container_exec(&params->config);
     exit(EXIT_FAILURE);
 }
 
-static pid_t nsh_container_clone(
-    uuid_t id, nsh_runtime_config_t *config, int cgroup_fd)
+static pid_t nsh_run_clone(
+    uuid_t id, nsh_run_params_t *params, int cgroup_fd)
 {
     pid_t pid;
 
@@ -109,34 +143,40 @@ static pid_t nsh_container_clone(
     }
 
     if (pid == 0) {
-        nsh_container_startup(id, config);
+        nsh_container_startup(id, params);
         assert(false);
     }
 
     return pid;
 }
 
-pid_t nsh_runtime_container_create(uuid_t id, nsh_runtime_config_t *config)
+static pid_t nsh_run_start(uuid_t id, nsh_run_params_t *params)
+{
+    int cgroup_fd;
+    pid_t pid;
+
+    cgroup_fd = nsh_cgroup_open(id);
+    if (cgroup_fd == -1)
+        return -1;
+
+    pid = nsh_run_clone(id, params, cgroup_fd);
+    close(cgroup_fd);
+
+    return pid;
+}
+
+pid_t nsh_run_create(uuid_t id, nsh_run_params_t *params)
 {
     pid_t pid;
-    int cgroup_fd;
     int err;
 
-    cgroup_fd = nsh_cgroup_create(id, &config->resources);
-    if (cgroup_fd == -1)
+    err = nsh_cgroup_create(id, &params->config.resources);
+    if (err)
         goto error;
 
-    printf("[+] Successfully created container cgroup\n");
-
-    pid = nsh_container_clone(id, config, cgroup_fd);
-    err = close(cgroup_fd);
-
-    if (err)
-        perror("[x] Failed to close cgroup file descriptor");
-    if (pid == -1 || err)
+    pid = nsh_run_start(id, params);
+    if (pid == -1)
         goto error_del_cgroup;
-
-    printf("[+] Successfully cloned child\n");
 
     return 0;
 
@@ -146,7 +186,7 @@ error:
     return -1;
 }
 
-void nsh_runtime_container_cleanup(uuid_t id)
+void nsh_run_cleanup(uuid_t id)
 {
     nsh_cgroup_delete(id);
 }

@@ -6,185 +6,261 @@
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <linux/limits.h>
+#include "utils/filesystem.h"
 #include "runtime/filesystem.h"
+#include "utils/macros.h"
 
-static int nsh_create_dev_mounts()
+static const mode_t NSH_DEFAULT_CHAR_DEV_MODE =
+    S_IFCHR | S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
+
+static const nsh_mount_t nsh_root_mounts[] = {
+    {
+        .source = "proc",
+        .destination = "/proc",
+        .type = "proc",
+        .mode = S_IRWXU | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH
+    },
+    {
+        .source = "sysfs",
+        .destination = "/sys",
+        .type = "sysfs",
+        .mode = S_IRWXU | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH
+    },
+    {
+        .source = "tmpfs",
+        .destination = "/dev",
+        .type = "tmpfs",
+        .mode = S_IRWXU | S_IRWXG | S_IRWXO | S_ISVTX,
+    },
+};
+
+static const nsh_mount_t nsh_sys_mounts[] = {
+    {
+        .source = "cgroup2",
+        .destination = "/sys/fs/cgroup",
+        .type = "cgroup2",
+        .mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH
+    }
+};
+
+static const nsh_mount_t nsh_dev_mounts[] = {
+    {
+        .source = "devpts",
+        .destination = "/dev/pts",
+        .type = "devpts",
+        .mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IWOTH
+    },
+    {
+        .source = "mqueue",
+        .destination = "/dev/mqueue",
+        .type = "mqueue",
+        .mode = S_IRWXU | S_IRWXG | S_IRWXO | S_ISVTX,
+    },
+    {
+        .source = "shm",
+        .destination = "/dev/shm",
+        .type = "tmpfs",
+        .mode = S_IRWXU | S_IRWXG | S_IRWXO | S_ISVTX,
+    },
+};
+
+static const nsh_node_t nsh_dev_nodes[] = {
+    {
+        .path = "/dev/zero",
+        .mode = NSH_DEFAULT_CHAR_DEV_MODE,
+        .dev_major = 1,
+        .dev_minor = 5
+    },
+    {
+        .path = "/dev/full",
+        .mode = NSH_DEFAULT_CHAR_DEV_MODE,
+        .dev_major = 1,
+        .dev_minor = 7
+    },
+    {
+        .path = "/dev/null",
+        .mode = NSH_DEFAULT_CHAR_DEV_MODE,
+        .dev_major = 1,
+        .dev_minor = 3
+    },
+    {
+        .path = "/dev/random",
+        .mode = NSH_DEFAULT_CHAR_DEV_MODE,
+        .dev_major = 1,
+        .dev_minor = 8
+    },
+    {
+        .path = "/dev/urandom",
+        .mode = NSH_DEFAULT_CHAR_DEV_MODE,
+        .dev_major = 1,
+        .dev_minor = 8
+    },
+    {
+        .path = "/dev/tty",
+        .mode = NSH_DEFAULT_CHAR_DEV_MODE,
+        .dev_major = 5,
+        .dev_minor = 0
+    }
+};
+
+static const nsh_symlink_t nsh_dev_symlinks[] = {
+    { .from = "/dev/pts/ptmx",   .to = "/dev/ptmx"   },
+    { .from = "/proc/self/fd",   .to = "/dev/fd"     },
+    { .from = "/proc/kcore",     .to = "/dev/core"   },
+    { .from = "/proc/self/fd/0", .to = "/dev/stdin"  },
+    { .from = "/proc/self/fd/1", .to = "/dev/stdout" },
+    { .from = "/proc/self/fd/2", .to = "/dev/stderr" }
+};
+
+static int nsh_mount(const nsh_mount_t *mnt)
 {
     int err;
 
-    err = mkdir("/dev/pts", S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IWOTH);
+    err = mkdir_if_missing(mnt->destination, mnt->mode);
     if (err) {
-        perror("[x] Failed to create /dev/pts");
+        perror("[x] Failed to create mount destination");
         return -1;
     }
 
-    err = mount("devpts", "/dev/pts", "devpts", 0, NULL);
+    err = mount(mnt->source, mnt->destination,
+                mnt->type, mnt->flags, mnt->data);
     if (err) {
-        perror("[x] Failed to mount devpts at /dev/pts");
-        return -1;
-    }
-
-    err = mkdir("/dev/mqueue", S_IRWXU | S_IRWXG | S_IRWXO | S_ISVTX);
-    if (err) {
-        perror("[x] Failed to create /dev/mqueue");
-        return -1;
-    }
-
-    err = mount("mqueue", "/dev/mqueue", "mqueue", 0, NULL);
-    if (err) {
-        perror("[x] Failed to mount mqueue at /dev/mqueue");
-        return -1;
-    }
-
-    err = mkdir("/dev/shm", S_IRWXU | S_IRWXG | S_IRWXO | S_ISVTX);
-    if (err) {
-        perror("[x] Failed to create /dev/shm");
-        return -1;
-    }
-
-    err = mount("shm", "/dev/shm", "tmpfs", 0, NULL);
-    if (err) {
-        perror("[x] Failed to mount tmpfs at /dev/shm");
+        perror("[x] Failed to mount");
         return -1;
     }
 
     return 0;
 }
 
-static int nsh_create_dev_nodes()
+static int nsh_mount_multiple(const nsh_mount_t *mounts, size_t len)
 {
-    const mode_t mode = S_IFCHR | S_IRUSR | S_IWUSR |
-                        S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
     int err;
 
-    err = mknod("/dev/zero", mode, makedev(1, 5));
-    if (err) {
-        perror("[x] Failed to create /dev/zero");
-        return -1;
+    for (size_t i = 0; i < len; i ++) {
+        err = nsh_mount(&mounts[i]);
+        if (err)
+            return -1;
     }
 
-    err = mknod("/dev/full", mode, makedev(1, 7));
-    if (err) {
-        perror("[x] Failed to create /dev/full");
-        return -1;
-    }
+    return 0;
+}
 
-    err = mknod("/dev/null", mode, makedev(1, 3));
-    if (err) {
-        perror("[x] Failed to create /dev/null");
-        return -1;
-    }
+static int nsh_node_create(const nsh_node_t *node)
+{
+    dev_t dev = makedev(node->dev_major, node->dev_minor);
+    int err;
 
-    err = mknod("/dev/random", mode, makedev(1, 8));
+    err = mknod(node->path, node->mode, dev);
     if (err) {
-        perror("[x] Failed to create /dev/random");
-        return -1;
-    }
-
-    err = mknod("/dev/urandom", mode, makedev(1, 8));
-    if (err) {
-        perror("[x] Failed to create /dev/urandom");
-        return -1;
-    }
-
-    err = mknod("/dev/tty", mode, makedev(5, 0));
-    if (err) {
-        perror("[x] Failed to create /dev/tty");
+        perror("[x] Failed to create node");
         return -1;
     }
 
     return 0;
 }
 
-static int nsh_create_dev_symlinks()
+static int nsh_node_create_multiple(const nsh_node_t *nodes, size_t len)
 {
     int err;
 
-    err = symlink("/dev/pts/ptmx", "/dev/ptmx");
-    if (err) {
-        perror("[x] Failed to symlink /dev/ptmx");
-        return -1;
+    for (size_t i = 0; i < len; i ++) {
+        err = nsh_node_create(&nodes[i]);
+        if (err)
+            return -1;
     }
 
-    err = symlink("/proc/self/fd", "/dev/fd");
-    if (err) {
-        perror("[x] Failed to symlink /dev/fd");
-        return -1;
-    }
+    return 0;
+}
 
-    err = symlink("/proc/kcore", "/dev/core");
-    if (err) {
-        perror("[x] Failed to symlink /dev/core");
-        return -1;
-    }
+static int nsh_symlink_create(const nsh_symlink_t *sym)
+{
+    int err;
 
-    err = symlink("/proc/self/fd/0", "/dev/stdin");
+    err = symlink(sym->from, sym->to);
     if (err) {
-        perror("[x] Failed to symlink /dev/stdin");
-        return -1;
-    }
-
-    err = symlink("/proc/self/fd/1", "/dev/stdout");
-    if (err) {
-        perror("[x] Failed to symlink /dev/stdout");
-        return -1;
-    }
-
-    err = symlink("/proc/self/fd/2", "/dev/stderr");
-    if (err) {
-        perror("[x] Failed to symlink /dev/stderr");
+        perror("[x] Failed to symlink");
         return -1;
     }
 
     return 0;
 }
 
-int nsh_fs_populate_dev()
+static int nsh_symlink_create_multiple(const nsh_symlink_t *symlinks, size_t len)
 {
     int err;
 
-    err = nsh_create_dev_mounts();
+    for (size_t i = 0; i < len; i ++) {
+        err = nsh_symlink_create(&symlinks[i]);
+        if (err)
+            return -1;
+    }
+
+    return 0;
+}
+
+static int nsh_fs_root_prepare()
+{
+    size_t root_mounts_len = ARRAY_LEN(nsh_root_mounts);
+    int err;
+
+    err = nsh_mount_multiple(nsh_root_mounts, root_mounts_len);
     if (err)
         return -1;
 
-    err = nsh_create_dev_nodes();
-    if (err)
-        return -1;
+    return 0;
+}
 
-    err = nsh_create_dev_symlinks();
+static int nsh_fs_sys_prepare()
+{
+    size_t sys_mounts_len = ARRAY_LEN(nsh_sys_mounts);
+    int err;
+
+    err = nsh_mount_multiple(nsh_sys_mounts, sys_mounts_len);
     if (err)
         return -1;
 
     return 0;
 }
 
-int nsh_fs_mount_essentials()
+static int nsh_fs_dev_prepare()
+{
+    size_t mounts_len = ARRAY_LEN(nsh_dev_mounts);
+    size_t nodes_len = ARRAY_LEN(nsh_dev_nodes);
+    size_t symlinks_len = ARRAY_LEN(nsh_dev_symlinks);
+    int err;
+
+    err = nsh_mount_multiple(nsh_dev_mounts, mounts_len);
+    if (err)
+        return -1;
+
+    err = nsh_node_create_multiple(nsh_dev_nodes, nodes_len);
+    if (err)
+        return -1;
+
+    err = nsh_symlink_create_multiple(nsh_dev_symlinks, symlinks_len);
+    if (err)
+        return -1;
+
+    return 0;
+}
+
+int nsh_fs_prepare()
 {
     int err;
 
-    err = mount("proc", "/proc", "proc", 0, NULL);
-    if (err) {
-        perror("[x] Failed to mount procfs at /proc");
-        return -1;
-    }
+    umask(0);
 
-    err = mount("sysfs", "/sys", "sysfs", 0, NULL);
-    if (err) {
-        perror("[x] Failed to mount sysfs at /sys");
+    err = nsh_fs_root_prepare();
+    if (err)
         return -1;
-    }
 
-    err = mount("tmpfs", "/dev", "tmpfs", 0, NULL);
-    if (err) {
-        perror("[x] Failed to mount tmpfs at /dev");
+    err = nsh_fs_sys_prepare();
+    if (err)
         return -1;
-    }
 
-    err = mount("cgroup2", "/sys/fs/cgroup", "cgroup2", 0, NULL);
-    if (err) {
-        perror("[x] Failed to mount cgroup2 at /sys/fs/cgroup");
+    err = nsh_fs_dev_prepare();
+    if (err)
         return -1;
-    }
 
     return 0;
 }

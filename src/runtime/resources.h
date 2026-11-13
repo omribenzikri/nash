@@ -12,6 +12,7 @@ typedef struct {
 } nsh_resources_t;
 
 int nsh_cgroup_create(uuid_t container_id, nsh_resources_t *resources);
+int nsh_cgroup_open(uuid_t container_id);
 int nsh_cgroup_delete(uuid_t container_id);
 
 #endif

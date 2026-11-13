@@ -4,6 +4,7 @@
 #include <sys/prctl.h>
 #include <linux/capability.h>
 #include <linux/prctl.h>
+#include "utils/macros.h"
 #include "runtime/capabilities.h"
 
 static const cap_value_t nsh_allowed_caps[] = {
@@ -21,12 +22,11 @@ static const cap_value_t nsh_allowed_caps[] = {
     CAP_KILL,
 };
 
-static const size_t nsh_allowed_caps_count =
-    sizeof(nsh_allowed_caps) / sizeof(nsh_allowed_caps[0]);
-
 static int nsh_cap_is_allowed(cap_value_t cap)
 {
-    for (size_t i = 0; i < nsh_allowed_caps_count; i++) {
+    size_t allowed_caps_len = ARRAY_LEN(nsh_allowed_caps);
+
+    for (size_t i = 0; i < allowed_caps_len; i++) {
         if (nsh_allowed_caps[i] == cap)
             return true;
     }
@@ -34,12 +34,13 @@ static int nsh_cap_is_allowed(cap_value_t cap)
     return false;
 }
 
-static int nsh_cap_populate_set(cap_t caps, cap_flag_t set)
+static int nsh_caps_set_populate(cap_t caps, cap_flag_t set)
 {
+    size_t allowed_caps_len = ARRAY_LEN(nsh_allowed_caps);
     int err;
 
     err = cap_set_flag(caps, set,
-                       nsh_allowed_caps_count, nsh_allowed_caps, CAP_SET);
+        allowed_caps_len, nsh_allowed_caps, CAP_SET);
     if (err) {
         perror("[x] Failed to set capabilities whitelist");
         return -1;
@@ -48,7 +49,7 @@ static int nsh_cap_populate_set(cap_t caps, cap_flag_t set)
     return 0;
 }
 
-static int nsh_cap_standard_sets_restrict()
+static int nsh_caps_standard_sets_restrict()
 {
     cap_t caps;
     int ret = 0;
@@ -61,9 +62,9 @@ static int nsh_cap_standard_sets_restrict()
         goto out;
     }
 
-    err = nsh_cap_populate_set(caps, CAP_EFFECTIVE) ||
-          nsh_cap_populate_set(caps, CAP_PERMITTED) ||
-          nsh_cap_populate_set(caps, CAP_INHERITABLE);
+    err = nsh_caps_set_populate(caps, CAP_EFFECTIVE) ||
+          nsh_caps_set_populate(caps, CAP_PERMITTED) ||
+          nsh_caps_set_populate(caps, CAP_INHERITABLE);
     if (err) {
         ret = -1;
         goto out_free_caps;
@@ -86,7 +87,7 @@ out:
     return ret;
 }
 
-static int nsh_cap_bounding_set_restrict()
+static int nsh_caps_bounding_set_restrict()
 {
     int err;
 
@@ -104,7 +105,7 @@ static int nsh_cap_bounding_set_restrict()
     return 0;
 }
 
-static int nsh_cap_ambient_set_clear()
+static int nsh_caps_ambient_set_clear()
 {
     int err;
 
@@ -130,10 +131,10 @@ static int nsh_set_no_new_privs()
     return 0;
 }
 
-int nsh_cap_drop()
+int nsh_caps_drop()
 {
-    return nsh_set_no_new_privs()          ||
-           nsh_cap_bounding_set_restrict() ||
-           nsh_cap_ambient_set_clear()     ||
-           nsh_cap_standard_sets_restrict();
+    return nsh_set_no_new_privs()           ||
+           nsh_caps_bounding_set_restrict() ||
+           nsh_caps_ambient_set_clear()     ||
+           nsh_caps_standard_sets_restrict();
 }
