@@ -3,7 +3,6 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
-#include <errno.h>
 #include <limits.h>
 #include <pwd.h>
 #include <grp.h>
@@ -105,18 +104,11 @@ static int nsh_uid_lookup(const char *rootfs_path, const char *user, uid_t *out)
         goto out;
     }
 
-    errno = 0;
-
     while ((pwd = fgetpwent(stream)) != NULL) {
         if (strncmp(user, pwd->pw_name, LOGIN_NAME_MAX) != 0)
             continue;
 
         *out = pwd->pw_uid;
-        goto out_close_stream;
-    }
-    if (errno) {
-        perror("[x] Failed to read from container " PASSWD_PATH);
-        ret = -1;
         goto out_close_stream;
     }
 
@@ -141,8 +133,6 @@ static int nsh_uname_lookup(const char *rootfs_path, uid_t uid, char **out)
         goto out;
     }
 
-    errno = 0;
-
     while ((pwd = fgetpwent(stream)) != NULL) {
         if (uid != pwd->pw_uid)
             continue;
@@ -153,11 +143,6 @@ static int nsh_uname_lookup(const char *rootfs_path, uid_t uid, char **out)
             ret = -1;
         }
 
-        goto out_close_stream;
-    }
-    if (errno) {
-        perror("[x] Failed to read from container " PASSWD_PATH);
-        ret = -1;
         goto out_close_stream;
     }
 
@@ -182,18 +167,11 @@ static int nsh_gid_lookup(const char *rootfs_path, const char *group, gid_t *out
         goto out;
     }
 
-    errno = 0;
-
     while ((grp = fgetgrent(stream)) != NULL) {
         if (strncmp(group, grp->gr_name, LOGIN_NAME_MAX) != 0)
             continue;
 
         *out = grp->gr_gid;
-        goto out_close_stream;
-    }
-    if (errno) {
-        perror("[x] Failed to read from container " GROUP_PATH);
-        ret = -1;
         goto out_close_stream;
     }
 
@@ -218,18 +196,11 @@ static int nsh_default_group_lookup(const char *rootfs_path, uid_t uid, gid_t *o
         goto out;
     }
 
-    errno = 0;
-
     while ((pwd = fgetpwent(stream)) != NULL) {
         if (uid != pwd->pw_uid)
             continue;
 
         *out = pwd->pw_gid;
-        goto out_close_stream;
-    }
-    if (errno) {
-        perror("[x] Failed to read from container " GROUP_PATH);
-        ret = -1;
         goto out_close_stream;
     }
 
@@ -265,8 +236,6 @@ static int nsh_supplementary_groups_lookup(
         goto out_free_uname;
     }
 
-    errno = 0;
-
     while ((grp = fgetgrent(stream)) != NULL) {
         for (int i = 0; grp->gr_mem[i] != NULL; i++) {
             if (strncmp(uname, grp->gr_mem[i], LOGIN_NAME_MAX) != 0)
@@ -279,11 +248,6 @@ static int nsh_supplementary_groups_lookup(
                 goto out_close_stream;
             }
         }
-    }
-    if (errno) {
-        perror("[x] Failed to read from container " GROUP_PATH);
-        ret = -1;
-        goto out_close_stream;
     }
 
 out_close_stream:
