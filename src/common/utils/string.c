@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <errno.h>
-#include "utils/string.h"
+#include "common/utils/string.h"
 
 int str_parse_uintmax(const char *str, uintmax_t max, uintmax_t *out)
 {

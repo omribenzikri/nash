@@ -3,7 +3,7 @@
 
 #include <uuid/uuid.h>
 #include <sys/types.h>
-#include "utils/macros.h"
+#include "common/utils/macros.h"
 #include "runtime/resources.h"
 #include "runtime/creds.h"
 

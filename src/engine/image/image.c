@@ -8,10 +8,10 @@
 #include <sys/mount.h>
 #include <linux/limits.h>
 #include "common/constants.h"
-#include "image/oci.h"
-#include "image/layer.h"
-#include "image/overlay.h"
-#include "image/image.h"
+#include "engine/image/oci.h"
+#include "engine/image/layer.h"
+#include "engine/image/overlay.h"
+#include "engine/image/image.h"
 
 struct nsh_image {
     char *path;

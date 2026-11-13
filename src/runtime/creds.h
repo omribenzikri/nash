@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 #include <sys/types.h>
-#include "utils/macros.h"
+#include "common/utils/macros.h"
 
 typedef struct {
     uid_t uid;

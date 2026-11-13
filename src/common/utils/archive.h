@@ -1,5 +1,5 @@
-#ifndef _NASH_UTILS_ARCHIVE_H
-#define _NASH_UTILS_ARCHIVE_H
+#ifndef _NASH_COMMON_UTILS_ARCHIVE_H
+#define _NASH_COMMON_UTILS_ARCHIVE_H
 
 #include <stdbool.h>
 #include <archive_entry.h>

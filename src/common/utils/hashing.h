@@ -1,5 +1,5 @@
-#ifndef _NASH_UTILS_HASHING_H
-#define _NASH_UTILS_HASHING_H
+#ifndef _NASH_COMMON_UTILS_HASHING_H
+#define _NASH_COMMON_UTILS_HASHING_H
 
 #include <stdio.h>
 #include <stdbool.h>

@@ -1,5 +1,5 @@
-#ifndef _NASH_UTILS_FILESYSTEM_H
-#define _NASH_UTILS_FILESYSTEM_H
+#ifndef _NASH_COMMON_UTILS_FILESYSTEM_H
+#define _NASH_COMMON_UTILS_FILESYSTEM_H
 
 #include <stddef.h>
 #include <sys/stat.h>

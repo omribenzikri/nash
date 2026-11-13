@@ -8,8 +8,8 @@
 #include <grp.h>
 #include <collectc/cc_common.h>
 #include <collectc/cc_array.h>
-#include "utils/array.h"
-#include "utils/string.h"
+#include "common/utils/array.h"
+#include "common/utils/string.h"
 #include "runtime/creds.h"
 #include "engine/container/config/creds.h"
 

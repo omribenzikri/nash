@@ -12,7 +12,7 @@
 #include <sys/syscall.h>
 #include <linux/sched.h>
 #include <uuid/uuid.h>
-#include "utils/array.h"
+#include "common/utils/array.h"
 #include "runtime/filesystem.h"
 #include "runtime/resources.h"
 #include "runtime/capabilities.h"

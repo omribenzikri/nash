@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <sodium.h>
 #include <blake3.h>
-#include "utils/hashing.h"
+#include "common/utils/hashing.h"
 
 #define NSH_MULTIPART_HASH_BUF_SIZE 4096
 

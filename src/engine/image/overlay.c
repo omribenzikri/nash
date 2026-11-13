@@ -8,8 +8,8 @@
 #include <linux/mount.h>
 #include <linux/limits.h>
 #include "common/constants.h"
-#include "utils/filesystem.h"
-#include "image/overlay.h"
+#include "common/utils/filesystem.h"
+#include "engine/image/overlay.h"
 
 int nsh_overlay_whiteout_create(const char *path)
 {

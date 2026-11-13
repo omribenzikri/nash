@@ -11,8 +11,8 @@
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
 #include <ocispec/image_spec_schema_content_descriptor.h>
 #include <ocispec/image_spec_schema_config_schema.h>
-#include "utils/filesystem.h"
-#include "image/oci.h"
+#include "common/utils/filesystem.h"
+#include "engine/image/oci.h"
 
 #define OCI_WHITEOUT_PREFIX ".wh."
 #define OCI_OPAQUE_WHITEOUT_NAME ".wh..wh..opq"

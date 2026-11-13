@@ -4,7 +4,7 @@
 #include <sys/prctl.h>
 #include <linux/capability.h>
 #include <linux/prctl.h>
-#include "utils/macros.h"
+#include "common/utils/macros.h"
 #include "runtime/capabilities.h"
 
 static const cap_value_t nsh_allowed_caps[] = {

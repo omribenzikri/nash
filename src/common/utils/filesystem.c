@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 #include <sys/xattr.h>
 #include <linux/limits.h>
-#include "utils/filesystem.h"
+#include "common/utils/filesystem.h"
 
 #define NTFW_MAXFDS 16
 

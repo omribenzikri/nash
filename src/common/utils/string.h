@@ -1,5 +1,5 @@
-#ifndef _NASH_UTILS_STRING_H
-#define _NASH_UTILS_STRING_H
+#ifndef _NASH_COMMON_UTILS_STRING_H
+#define _NASH_COMMON_UTILS_STRING_H
 
 #include <stdint.h>
 

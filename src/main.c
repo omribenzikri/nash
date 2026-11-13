@@ -7,8 +7,8 @@
 #include <limits.h>
 #include <getopt.h>
 #include <sys/wait.h>
-#include "utils/string.h"
-#include "resources/container.h"
+#include "common/utils/string.h"
+#include "daemon/container.h"
 #include "startup.h"
 
 #define NSH_OPT_ENV_MAX 1024

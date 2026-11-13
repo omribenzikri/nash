@@ -1,5 +1,5 @@
-#ifndef _NASH_IMAGE_IMAGE_H
-#define _NASH_IMAGE_IMAGE_H
+#ifndef _NASH_ENGINE_IMAGE_IMAGE_H
+#define _NASH_ENGINE_IMAGE_IMAGE_H
 
 #include <stddef.h>
 

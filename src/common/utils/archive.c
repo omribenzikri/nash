@@ -1,7 +1,7 @@
 #include <stddef.h>
 #include <string.h>
 #include <archive.h>
-#include "utils/archive.h"
+#include "common/utils/archive.h"
 
 bool archive_entry_xattr_exists(struct archive_entry *entry, const char *name)
 {

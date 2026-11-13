@@ -1,5 +1,5 @@
-#ifndef _NASH_IMAGE_OVERLAY_H
-#define _NASH_IMAGE_OVERLAY_H
+#ifndef _NASH_ENGINE_IMAGE_OVERLAY_H
+#define _NASH_ENGINE_IMAGE_OVERLAY_H
 
 #include <stddef.h>
 #include <sys/sysmacros.h>

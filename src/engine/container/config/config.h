@@ -2,7 +2,7 @@
 #define _NASH_ENGINE_CONTAINER_CONFIG_CONFIG_H
 
 #include <stddef.h>
-#include "utils/macros.h"
+#include "common/utils/macros.h"
 
 #define NSH_DEFAULT_WORKING_DIRECTORY "/"
 #define NSH_DEFAULT_USER "root"

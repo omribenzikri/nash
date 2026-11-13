@@ -1,5 +1,5 @@
-#ifndef _NASH_UTILS_MACROS_H
-#define _NASH_UTILS_MACROS_H
+#ifndef _NASH_COMMON_UTILS_MACROS_H
+#define _NASH_COMMON_UTILS_MACROS_H
 
 #define ARRAY_LEN(name) sizeof(name) / sizeof(*name);
 

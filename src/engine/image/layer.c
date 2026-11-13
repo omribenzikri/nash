@@ -14,11 +14,11 @@
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
 #include <ocispec/image_spec_schema_content_descriptor.h>
 #include "common/constants.h"
-#include "utils/filesystem.h"
-#include "utils/archive.h"
-#include "image/oci.h"
-#include "image/overlay.h"
-#include "image/layer.h"
+#include "common/utils/filesystem.h"
+#include "common/utils/archive.h"
+#include "engine/image/oci.h"
+#include "engine/image/overlay.h"
+#include "engine/image/layer.h"
 
 #define NSH_LAYER_EXTRACTION_BLOCK_SIZE 10240
 

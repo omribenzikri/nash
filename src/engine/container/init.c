@@ -6,8 +6,8 @@
 #include <linux/limits.h>
 #include <collectc/cc_common.h>
 #include <collectc/cc_array.h>
-#include "utils/array.h"
-#include "utils/macros.h"
+#include "common/utils/array.h"
+#include "common/utils/macros.h"
 #include "runtime/creds.h"
 #include "runtime/runtime.h"
 #include "engine/container/config/env.h"

@@ -3,7 +3,7 @@
 #include <string.h>
 #include <collectc/cc_common.h>
 #include <collectc/cc_array.h>
-#include "utils/array.h"
+#include "common/utils/array.h"
 
 void **array_realloc_nullterm_shallow(void **ptr, size_t len)
 {

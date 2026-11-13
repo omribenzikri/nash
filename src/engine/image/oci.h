@@ -1,5 +1,5 @@
-#ifndef _NASH_IMAGE_OCI_H
-#define _NASH_IMAGE_OCI_H
+#ifndef _NASH_ENGINE_IMAGE_OCI_H
+#define _NASH_ENGINE_IMAGE_OCI_H
 
 #include <stddef.h>
 #include <stdbool.h>

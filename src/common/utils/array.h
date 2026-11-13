@@ -1,5 +1,5 @@
-#ifndef _NASH_UTILS_ARRAY_H
-#define _NASH_UTILS_ARRAY_H
+#ifndef _NASH_COMMON_UTILS_ARRAY_H
+#define _NASH_COMMON_UTILS_ARRAY_H
 
 #include <stddef.h>
 #include <collectc/cc_common.h>

@@ -4,13 +4,13 @@
 #include <sys/stat.h>
 #include <linux/limits.h>
 #include <uuid/uuid.h>
-#include "image/image.h"
 #include "runtime/runtime.h"
 #include "common/constants.h"
-#include "utils/filesystem.h"
+#include "common/utils/filesystem.h"
+#include "engine/image/image.h"
 #include "engine/container/config/config.h"
 #include "engine/container/init.h"
-#include "engine/container.h"
+#include "engine/container/container.h"
 
 static void nsh_resolve_container_workdir_path(
     uuid_t container_id, char *buf, size_t size)
