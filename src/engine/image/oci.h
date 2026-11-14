@@ -7,6 +7,7 @@
 #include <ocispec/image_spec_schema_image_index_schema.h>
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
 #include <ocispec/image_spec_schema_config_schema.h>
+#include <ocispec/image_spec_schema_content_descriptor.h>
 
 #define OCI_MEDIA_TYPE_MANIFEST "application/vnd.oci.image.manifest.v1+json"
 #define OCI_MEDIA_TYPE_CONFIG "application/vnd.oci.image.config.v1+json"
@@ -21,9 +22,18 @@ typedef struct {
     image_spec_schema_config_schema *config;
 } oci_image_t;
 
+typedef struct {
+    char *ref;
+    image_spec_schema_image_manifest_schema *manifest;
+    image_spec_schema_config_schema *config;
+} nsh_oci_image_meta_t;
+
 int nsh_oci_image_load(oci_image_t *image, const char *path);
 void nsh_oci_image_free(oci_image_t *image);
 int nsh_oci_digest_to_path(const char *image_path, const char *digest, char *path, size_t size);
+
+int nsh_oci_image_meta_load(nsh_oci_image_meta_t *meta, const char *path);
+void nsh_oci_image_meta_destroy(nsh_oci_image_meta_t *meta);
 
 bool nsh_oci_is_whiteout(const char *pathname);
 bool nsh_oci_is_valid_whiteout(const char *pathname);

@@ -60,8 +60,8 @@ static bool nsh_oci_is_compat_platform(
            strcmp(platform->os, os) == 0;
 }
 
-static image_spec_schema_image_index_schema_manifests_element *nsh_oci_find_compat_manifest(
-    image_spec_schema_image_index_schema *index)
+static image_spec_schema_image_index_schema_manifests_element
+    *nsh_oci_find_compat_image_manifest(image_spec_schema_image_index_schema *index)
 {
     image_spec_schema_image_index_schema_manifests_element *element;
 
@@ -219,7 +219,7 @@ int nsh_oci_image_load(oci_image_t *image, const char *path)
     if (image->index == NULL)
         goto error_free_layout;
 
-    manifest_element = nsh_oci_find_compat_manifest(image->index);
+    manifest_element = nsh_oci_find_compat_image_manifest(image->index);
     if (manifest_element == NULL) {
         fprintf(stderr, "[x] Failed to find a compatible image manifest in the index\n");
         goto error_free_index;
@@ -251,6 +251,82 @@ void nsh_oci_image_free(oci_image_t *image)
     free_image_spec_schema_image_index_schema(image->index);
     free_image_spec_schema_image_manifest_schema(image->manifest);
     free_image_spec_schema_config_schema(image->config);
+}
+
+static int nsh_oci_image_meta_load_internal(nsh_oci_image_meta_t *meta,
+    const char *path, image_spec_schema_image_index_schema *index)
+{
+    image_spec_schema_image_index_schema_manifests_element *manifest_element;
+
+    manifest_element = nsh_oci_find_compat_image_manifest(index);
+    if (manifest_element == NULL) {
+        fprintf(stderr,
+            "[x] Cannot a compatible manifest in image index\n");
+        goto error;
+    }
+
+    meta->ref = strndup(manifest_element->digest, NAME_MAX);
+    if (meta->ref == NULL) {
+        perror("[x] Failed to allocate manifest digest");
+        goto error;
+    }
+
+    meta->manifest = nsh_oci_load_image_manifest(path, meta->ref);
+    if (meta->manifest == NULL)
+        goto error_free_ref;
+
+    meta->config = nsh_oci_load_image_config(path, meta->manifest->config->digest);
+    if (meta->config == NULL)
+        goto error_free_manifest;
+
+    return 0;
+
+error_free_manifest:
+    free_image_spec_schema_image_manifest_schema(meta->manifest);
+error_free_ref:
+    free(meta->ref);
+error:
+    return -1;
+}
+
+int nsh_oci_image_meta_load(nsh_oci_image_meta_t *meta, const char *path)
+{
+    image_spec_schema_image_layout_schema *layout;
+    image_spec_schema_image_index_schema *index;
+    int err;
+    int ret = 0;
+
+    layout = nsh_oci_load_image_layout(path);
+    if (layout == NULL) {
+        ret = -1;
+        goto out;
+    }
+
+    index = nsh_oci_load_image_index(path);
+    if (index == NULL) {
+        ret = -1;
+        goto out_free_layout;
+    }
+
+    err = nsh_oci_image_meta_load_internal(meta, path, index);
+    if (err) {
+        ret = -1;
+        goto out_free_index;
+    }
+
+out_free_index:
+    free_image_spec_schema_image_index_schema(index);
+out_free_layout:
+    free_image_spec_schema_image_layout_schema(layout);
+out:
+    return ret;
+}
+
+void nsh_oci_image_meta_destroy(nsh_oci_image_meta_t *meta)
+{
+    free(meta->ref);
+    free_image_spec_schema_image_manifest_schema(meta->manifest);
+    free_image_spec_schema_config_schema(meta->config);
 }
 
 bool nsh_oci_is_whiteout(const char *pathname)
