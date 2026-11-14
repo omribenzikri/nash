@@ -262,7 +262,7 @@ static int nsh_uid_resolve(const char *rootfs_path, const char *user, uid_t *out
 {
     int err;
 
-    err = str_parse_uintmax(user, UINT_MAX, (uintmax_t *)out);
+    err = str_parse_uintmax(user, 10, UINT_MAX, (uintmax_t *)out);
     if (!err)
         return 0;
 
@@ -277,7 +277,7 @@ static int nsh_gid_resolve(const char *rootfs_path, const char *group, gid_t *ou
 {
     int err;
 
-    err = str_parse_uintmax(group, UINT_MAX, (uintmax_t *)out);
+    err = str_parse_uintmax(group, 10, UINT_MAX, (uintmax_t *)out);
     if (!err)
         return 0;
 

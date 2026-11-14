@@ -42,7 +42,18 @@ static int nsh_image_import_blobs(const char *path)
         goto out;
     }
 
-    puts(image_meta.ref);
+    err = nsh_oci_import_manifest(NSH_STORE_MANIFESTS, path, &image_meta);
+    if (err) {
+        ret = -1;
+        goto out_destroy_image_meta;
+    }
+
+    err = nsh_oci_import_config(NSH_STORE_CONFIG, path, &image_meta);
+    if (err) {
+        ret = -1;
+        goto out_destroy_image_meta;
+    }
+
     goto out_destroy_image_meta;
 
 out_destroy_image_meta:

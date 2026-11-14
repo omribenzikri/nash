@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <string.h>
+#include <unistd.h>
 #include <assert.h>
 #include <linux/limits.h>
 #include <ocispec/json_common.h>
@@ -12,10 +13,16 @@
 #include <ocispec/image_spec_schema_content_descriptor.h>
 #include <ocispec/image_spec_schema_config_schema.h>
 #include "common/utils/filesystem.h"
+#include "common/utils/string.h"
+#include "common/utils/hashing.h"
 #include "engine/image/oci.h"
 
 #define OCI_WHITEOUT_PREFIX ".wh."
 #define OCI_OPAQUE_WHITEOUT_NAME ".wh..wh..opq"
+
+#define OCI_HASH_ALG_SHA256 "sha256"
+#define OCI_HASH_ALG_SHA512 "sha512"
+#define OCI_HASH_ALG_BLAKE3 "blake3"
 
 #define NSH_OCI_SUPPORTED_IMAGE_LAYOUT_VERSION "1.0.0"
 
@@ -81,15 +88,16 @@ static image_spec_schema_image_index_schema_manifests_element
     return NULL;
 }
 
-int nsh_oci_digest_to_path(const char *image_path, const char *digest, char *buf, size_t size)
+static int nsh_oci_digest_parse(const char *digest,
+    char *alg_buf, size_t alg_size, char *encoded_buf, size_t encoded_size)
 {
-    char digest_mut[PATH_MAX];
+    char copy[NAME_MAX + 1];
     char *alg;
     char *encoded;
 
-    snprintf(digest_mut, sizeof(digest_mut), "%s", digest);
+    snprintf(copy, sizeof(copy), "%s", digest);
 
-    alg = strtok(digest_mut, ":");
+    alg = strtok(copy, ":");
     if (alg == NULL)
         return -1;
 
@@ -100,7 +108,31 @@ int nsh_oci_digest_to_path(const char *image_path, const char *digest, char *buf
     if (strtok(NULL, ":") != NULL)
         return -1;
 
+    snprintf(alg_buf, alg_size, "%s", alg);
+    snprintf(encoded_buf, encoded_size, "%s", encoded);
+
+    return 0;
+}
+
+static void nsh_oci_digest_components_to_path(
+    const char *image_path, const char *alg, const char *encoded, char *buf, size_t size)
+{
     snprintf(buf, size, "%s/blobs/%s/%s", image_path, alg, encoded);
+}
+
+int nsh_oci_digest_to_path(const char *image_path, const char *digest, char *buf, size_t size)
+{
+    char alg[NAME_MAX + 1];
+    char encoded[NAME_MAX + 1];
+    int err;
+
+    err = nsh_oci_digest_parse(digest, alg, sizeof(alg), encoded, sizeof(encoded));
+    if (err) {
+        fprintf(stderr, "[x] Failed to parse blob digest: %s\n", digest);
+        return -1;
+    }
+
+    nsh_oci_digest_components_to_path(image_path, alg, encoded, buf, size);
 
     return 0;
 }
@@ -378,4 +410,112 @@ int nsh_oci_whiteout_to_file(const char *pathname, char *buf, size_t size)
     snprintf(buf, size, "%s/%s", dir_name, base_name + strlen(OCI_WHITEOUT_PREFIX));
 
     return 0;
+}
+
+static int nsh_oci_verify_blob_hash(
+    const char *path, const char *alg, const char *encoded, bool *out)
+{
+    union {
+        uint8_t sha256[crypto_hash_sha256_BYTES];
+        uint8_t sha512[crypto_hash_sha512_BYTES];
+        uint8_t blake3[BLAKE3_OUT_LEN];
+    } expected;
+    ssize_t expected_len;
+
+    expected_len = str_parse_hex(encoded, (uint8_t *)&expected, sizeof(expected));
+    if (expected_len == -1) {
+        fprintf(stderr, "[x] Failed to parse digest encoded: %s\n", encoded);
+        return -1;
+    }
+
+    if (strcmp(alg, OCI_HASH_ALG_SHA256) == 0) {
+        if (expected_len != sizeof(expected.sha256)) {
+            *out = false;
+            return 0;
+        }
+        return sha256_verify_file(path, expected.sha256, out);
+    }
+    else if (strcmp(alg, OCI_HASH_ALG_SHA512) == 0) {
+        if (expected_len != sizeof(expected.sha512)) {
+            *out = false;
+            return 0;
+        }
+        return sha512_verify_file(path, expected.sha512, out);
+    }
+    else if (strcmp(alg, OCI_HASH_ALG_BLAKE3) == 0) {
+        if (expected_len != sizeof(expected.blake3)) {
+            *out = false;
+            return 0;
+        }
+        return blake3_verify_file(path, expected.blake3, out);
+    }
+    else {
+        fprintf(stderr, "[x] Unsupported hash algorithm: %s\n", alg);
+        return -1;
+    }
+}
+
+static int nsh_oci_verify_blob(const char *path, const char *digest, bool *out)
+{
+    char alg[NAME_MAX + 1];
+    char encoded[NAME_MAX + 1];
+    int err;
+
+    err = nsh_oci_digest_parse(digest, alg, sizeof(alg), encoded, sizeof(encoded));
+    if (err) {
+        fprintf(stderr, "[x] Failed to parse blob digest: %s\n", digest);
+        return -1;
+    }
+
+    err = nsh_oci_verify_blob_hash(path, alg, encoded, out);
+    if (err)
+        return -1;
+
+    return 0;
+}
+
+static int nsh_oci_import_blob(
+    const char *repo_path, const char *image_path, const char *digest)
+{
+    char blob_path[PATH_MAX];
+    char dest_path[PATH_MAX];
+    bool is_verified;
+    int err;
+
+    err = nsh_oci_digest_to_path(image_path, digest, blob_path, sizeof(blob_path));
+    if (err)
+        return -1;
+
+    snprintf(dest_path, sizeof(dest_path), "%s/%s", repo_path, digest);
+
+    err = nsh_oci_verify_blob(blob_path, digest, &is_verified);
+    if (err || !is_verified) {
+        fprintf(stderr, "[x] Failed to verify blob with digest: %s\n", digest);
+        return -1;
+    }
+
+    if (access(dest_path, F_OK) == 0) {
+        printf("[*] Blob: %s already exists, skipping...\n", digest);
+        return 0;
+    }
+
+    err = copy_file(blob_path, dest_path);
+    if (err) {
+        perror("[x] Failed to copy blob");
+        return -1;
+    }
+
+    return 0;
+}
+
+int nsh_oci_import_manifest(const char *repo_path,
+    const char *image_path, nsh_oci_image_meta_t *meta)
+{
+    return nsh_oci_import_blob(repo_path, image_path, meta->ref);
+}
+
+ int nsh_oci_import_config(const char *repo_path,
+     const char *image_path, nsh_oci_image_meta_t *meta)
+{
+    return nsh_oci_import_blob(repo_path, image_path, meta->manifest->config->digest);
 }

@@ -81,7 +81,7 @@ static int nsh_cli_run_parse_opts(int argc, char **argv,
             params->config.working_dir = optarg;
             break;
         case NSH_OPT_RUN_CPU_TIME:
-            err = str_parse_uintmax(optarg, UINT8_MAX,
+            err = str_parse_uintmax(optarg, 10, UINT8_MAX,
                 (uintmax_t *)&params->resources.cpu_time);
             if (err ||params->resources.cpu_time == 0
                     ||params->resources.cpu_time > 100) {
@@ -90,7 +90,7 @@ static int nsh_cli_run_parse_opts(int argc, char **argv,
                     }
             break;
         case NSH_OPT_RUN_PROCS:
-            err = str_parse_uintmax(optarg, UINT32_MAX,
+            err = str_parse_uintmax(optarg, 10, UINT32_MAX,
                 (uintmax_t *)&params->resources.procs);
             if (err) {
                 fprintf(stderr, "Error: procs is invalid\n");
@@ -98,7 +98,7 @@ static int nsh_cli_run_parse_opts(int argc, char **argv,
             }
             break;
         case NSH_OPT_RUN_MEMORY:
-            err = str_parse_uintmax(optarg, UINT64_MAX,
+            err = str_parse_uintmax(optarg, 10, UINT64_MAX,
                 (uintmax_t *)&params->resources.memory_bytes);
             if (err) {
                 fprintf(stderr, "Error: memory is invalid\n");
@@ -106,7 +106,7 @@ static int nsh_cli_run_parse_opts(int argc, char **argv,
             }
             break;
         case NSH_OPT_RUN_MEMORY_SWAP:
-            err = str_parse_uintmax(optarg, UINT64_MAX,
+            err = str_parse_uintmax(optarg, 10, UINT64_MAX,
                 (uintmax_t *)&params->resources.memory_swap_bytes);
             if (err) {
                 fprintf(stderr, "Error: swap is invalid\n");

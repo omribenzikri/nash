@@ -2,6 +2,8 @@
 #define _XOPEN_SOURCE 700
 
 #include <stdio.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <ftw.h>
@@ -13,6 +15,7 @@
 #include "common/utils/filesystem.h"
 
 #define NTFW_MAXFDS 16
+#define FILE_COPY_BUF_SIZE 8192
 
 int mkdir_if_missing(const char *path, mode_t mode)
 {
@@ -33,6 +36,63 @@ static int remove_callback(const char *path, const struct stat *sb, int type, st
 int rmdir_recursive(const char *path)
 {
     return nftw(path, remove_callback, NTFW_MAXFDS, FTW_DEPTH | FTW_PHYS);
+}
+
+int copy_file(const char *src, const char *dst)
+{
+    uint8_t buffer[FILE_COPY_BUF_SIZE];
+    FILE *src_stream = NULL;
+    FILE *dst_stream = NULL;
+    size_t bytes_read;
+    size_t bytes_written;
+    int err;
+    int errcode;
+    int ret = 0;
+
+    src_stream = fopen(src, "rb");
+    if (src_stream == NULL) {
+        ret = -1;
+        goto cleanup;
+    }
+
+    dst_stream = fopen(dst, "wb");
+    if (dst_stream == NULL) {
+        ret = -1;
+        goto cleanup;
+    }
+
+    while (true) {
+        bytes_read = fread(buffer, 1, sizeof(buffer), src_stream);
+        if (bytes_read > 0) {
+            bytes_written = fwrite(buffer, 1, bytes_read, dst_stream);
+            if (bytes_written != bytes_read) {
+                ret = -1;
+                goto cleanup;
+            }
+        }
+
+        if (bytes_read < sizeof(buffer)) {
+            if (ferror(src_stream)) {
+                ret = -1;
+                goto cleanup;
+            }
+            if (feof(src_stream))
+                break;
+        }
+    }
+
+    err = fflush(dst_stream);
+    if (err) {
+        ret = -1;
+        goto cleanup;
+    }
+
+cleanup:
+    errcode = errno;
+    if (src_stream != NULL) fclose(src_stream);
+    if (dst_stream != NULL) fclose(dst_stream);
+    errno = errcode;
+    return ret;
 }
 
 void split_path(const char *path,
@@ -95,8 +155,6 @@ int create_with_xattr(const char *path, mode_t mode,
         goto out_close_fd;
     }
 
-// We wouldn't want to error on cleanup
-// since the file is already created by now
 out_close_fd:
     close(fd);
 out_close_dirfd:
