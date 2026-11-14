@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -70,6 +71,12 @@ static void nsh_oci_unpack_context_destroy(nsh_oci_unpack_context_t *ctx)
 
     cc_array_destroy_cb(ctx->hardlinks,
         (void (*)(void *))archive_entry_free);
+}
+
+static bool nsh_oci_entry_is_valid(struct archive_entry *entry)
+{
+    return !nsh_overlay_archive_entry_is_whiteout(entry) &&
+           !nsh_overlay_archive_entry_is_opaque(entry);
 }
 
 static int nsh_oci_unpack_hardlinks(nsh_oci_unpack_context_t *ctx)
@@ -247,8 +254,10 @@ static int nsh_oci_handle_opaque_whiteout(
 static int nsh_oci_handle_entry(
     struct archive_entry *entry, nsh_oci_unpack_context_t *ctx)
 {
-    // TODO: verify entry validity
     const char *pathname = archive_entry_pathname(entry);
+
+    if (!nsh_oci_entry_is_valid(entry))
+        return -1;
 
     if (archive_entry_hardlink(entry)) {
         return nsh_oci_handle_hardlink(entry, ctx);

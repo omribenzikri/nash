@@ -4,11 +4,15 @@
 #include <stddef.h>
 #include <sys/sysmacros.h>
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
+#include <archive_entry.h>
 
 #define OVERLAYFS_NAME "overlay"
 #define OVERLAYFS_WHITEOUT_DEV makedev(0, 0)
 #define OVERLAYFS_WHITEOUT_XATTR "trusted.overlay.whiteout"
 #define OVERLAYFS_OPAQUE_XATTR "trusted.overlay.opaque"
+
+bool nsh_overlay_archive_entry_is_whiteout(struct archive_entry *entry);
+bool nsh_overlay_archive_entry_is_opaque(struct archive_entry *entry);
 
 int nsh_overlay_whiteout_create(const char *path);
 int nsh_overlay_opaque_set(const char *path);

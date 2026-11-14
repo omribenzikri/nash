@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stddef.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -7,9 +8,28 @@
 #include <sys/mount.h>
 #include <linux/mount.h>
 #include <linux/limits.h>
+#include <archive_entry.h>
+#include "common/utils/archive.h"
 #include "common/constants.h"
 #include "common/utils/filesystem.h"
 #include "engine/image/overlay.h"
+
+bool nsh_overlay_archive_entry_is_whiteout(struct archive_entry *entry)
+{
+    if (archive_entry_filetype(entry) == AE_IFCHR &&
+        archive_entry_rdev(entry) == OVERLAYFS_WHITEOUT_DEV)
+            return true;
+
+    if (archive_entry_xattr_exists(entry, OVERLAYFS_WHITEOUT_XATTR))
+        return true;
+
+    return false;
+}
+
+bool nsh_overlay_archive_entry_is_opaque(struct archive_entry *entry)
+{
+    return archive_entry_xattr_exists(entry, OVERLAYFS_OPAQUE_XATTR);
+}
 
 int nsh_overlay_whiteout_create(const char *path)
 {
