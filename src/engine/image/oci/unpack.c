@@ -9,6 +9,9 @@
 #include <collectc/cc_common.h>
 #include <collectc/cc_array.h>
 #include "common/utils/array.h"
+#include "common/utils/filesystem.h"
+#include "engine/image/overlay.h"
+#include "engine/image/oci/whiteout.h"
 #include "engine/image/oci/unpack.h"
 
 #define NSH_OCI_LAYER_UNPACK_BLOCK_SIZE 10240
@@ -17,6 +20,8 @@ typedef struct {
     struct archive *reader;
     struct archive *writer;
     struct cc_array_s *hardlinks;
+    struct cc_array_s *whiteouts;
+    struct cc_array_s *opaque_whiteouts;
 } nsh_oci_unpack_context_t;
 
 static int nsh_oci_unpack_context_init(nsh_oci_unpack_context_t *ctx,
@@ -33,14 +38,36 @@ static int nsh_oci_unpack_context_init(nsh_oci_unpack_context_t *ctx,
         goto error;
     }
 
+    cc_stat = cc_array_new(&ctx->whiteouts);
+    if (cc_stat != CC_OK) {
+        fprintf(stderr, "[x] Failed to allocate whiteouts dynarray\n");
+        goto error_destroy_hardlinks;
+    }
+
+    cc_stat = cc_array_new(&ctx->opaque_whiteouts);
+    if (cc_stat != CC_OK) {
+        fprintf(stderr, "[x] Failed to allocate opaque whiteouts dynarray\n");
+        goto error_destroy_whiteouts;
+    }
+
     return 0;
 
+error_destroy_whiteouts:
+    cc_array_destroy(ctx->whiteouts);
+error_destroy_hardlinks:
+    cc_array_destroy(ctx->hardlinks);
 error:
     return -1;
 }
 
 static void nsh_oci_unpack_context_destroy(nsh_oci_unpack_context_t *ctx)
 {
+    cc_array_destroy_cb(ctx->opaque_whiteouts,
+        (void (*)(void *))archive_entry_free);
+
+    cc_array_destroy_cb(ctx->whiteouts,
+        (void (*)(void *))archive_entry_free);
+
     cc_array_destroy_cb(ctx->hardlinks,
         (void (*)(void *))archive_entry_free);
 }
@@ -66,6 +93,53 @@ static int nsh_oci_unpack_hardlinks(nsh_oci_unpack_context_t *ctx)
                     archive_error_string(ctx->writer));
             return -1;
         }
+    }
+
+    return 0;
+}
+
+static int nsh_oci_unpack_whiteouts(nsh_oci_unpack_context_t *ctx)
+{
+    struct archive_entry *entry;
+    const char *whiteout_path;
+    char file_path[PATH_MAX];
+    int err;
+
+    for (size_t i = 0; i < cc_array_size(ctx->whiteouts); i++) {
+        cc_array_get_at(ctx->whiteouts, i, (void **)&entry);
+
+        whiteout_path = archive_entry_pathname(entry);
+        err = nsh_oci_whiteout_to_file_new(whiteout_path, file_path, sizeof(file_path));
+        if (err) {
+            fprintf(stderr,
+                "[x] Failed to resolve file path of whiteout: %s\n", whiteout_path);
+            return -1;
+        }
+
+        err = nsh_overlay_whiteout_create(file_path);
+        if (err)
+            return -1;
+    }
+
+    return 0;
+}
+
+static int nsh_oci_unpack_opaque_whiteouts(nsh_oci_unpack_context_t *ctx)
+{
+    struct archive_entry *entry;
+    const char *opaque_whiteout_path;
+    char dir_path[PATH_MAX];
+    int err;
+
+    for (size_t i = 0; i < cc_array_size(ctx->opaque_whiteouts); i++) {
+        cc_array_get_at(ctx->opaque_whiteouts, i, (void **)&entry);
+
+        opaque_whiteout_path = archive_entry_pathname(entry);
+        split_path(opaque_whiteout_path, dir_path, sizeof(dir_path), NULL, 0);
+
+        err = nsh_overlay_opaque_set(dir_path);
+        if (err)
+            return -1;
     }
 
     return 0;
@@ -117,21 +191,73 @@ static int nsh_oci_unpack_entry(
     return 0;
 }
 
+static int nsh_oci_handle_hardlink(
+    struct archive_entry *entry, nsh_oci_unpack_context_t *ctx)
+{
+    const char *pathname = archive_entry_pathname(entry);
+    enum cc_stat cc_stat;
+
+    cc_stat = cc_array_add_archive_entry(ctx->hardlinks, entry);
+    if (cc_stat != CC_OK) {
+        fprintf(stderr,
+            "[x] Failed to add layer hardlink entry: %s\n", pathname);
+        return -1;
+    }
+
+    return 0;
+}
+
+static int nsh_oci_handle_whiteout(
+    struct archive_entry *entry, nsh_oci_unpack_context_t *ctx)
+{
+    const char *pathname = archive_entry_pathname(entry);
+    enum cc_stat cc_stat;
+
+    if (!nsh_oci_is_valid_whiteout_new(pathname)) {
+        fprintf(stderr, "[x] Invalid whiteout: %s\n", pathname);
+        return -1;
+    }
+
+    cc_stat = cc_array_add_archive_entry(ctx->whiteouts, entry);
+    if (cc_stat != CC_OK) {
+        fprintf(stderr,
+            "[x] Failed to add layer whiteout entry: %s\n", pathname);
+        return -1;
+    }
+
+    return 0;
+}
+
+static int nsh_oci_handle_opaque_whiteout(
+    struct archive_entry *entry, nsh_oci_unpack_context_t *ctx)
+{
+    const char *pathname = archive_entry_pathname(entry);
+    enum cc_stat cc_stat;
+
+    cc_stat = cc_array_add_archive_entry(ctx->opaque_whiteouts, entry);
+    if (cc_stat != CC_OK) {
+        fprintf(stderr,
+            "[x] Failed to add layer opaque whiteout entry: %s\n", pathname);
+        return -1;
+    }
+
+    return 0;
+}
+
 static int nsh_oci_handle_entry(
     struct archive_entry *entry, nsh_oci_unpack_context_t *ctx)
 {
     // TODO: verify entry validity
-    // TODO: handle whiteout
-    // TODO: handle opaque whiteout
-    enum cc_stat cc_stat;
+    const char *pathname = archive_entry_pathname(entry);
 
     if (archive_entry_hardlink(entry)) {
-        cc_stat = cc_array_add_archive_entry(ctx->hardlinks, entry);
-        if (cc_stat != CC_OK) {
-            fprintf(stderr, "[x] Failed to add layer hardlink entry\n");
-            return -1;
-        }
-        return 0;
+        return nsh_oci_handle_hardlink(entry, ctx);
+    }
+    if (nsh_oci_is_whiteout_new(pathname)) {
+        return nsh_oci_handle_whiteout(entry, ctx);
+    }
+    if (nsh_oci_is_opaque_whiteout_new(pathname)) {
+        return nsh_oci_handle_opaque_whiteout(entry, ctx);
     }
 
     return nsh_oci_unpack_entry(entry, ctx);
@@ -184,6 +310,18 @@ static int nsh_oci_unpack_internal(struct archive *reader, struct archive *write
     }
 
     err = nsh_oci_unpack_hardlinks(&ctx);
+    if (err) {
+        ret = -1;
+        goto out_destroy_context;
+    }
+
+    err = nsh_oci_unpack_whiteouts(&ctx);
+    if (err) {
+        ret = -1;
+        goto out_destroy_context;
+    }
+
+    err = nsh_oci_unpack_opaque_whiteouts(&ctx);
     if (err) {
         ret = -1;
         goto out_destroy_context;
