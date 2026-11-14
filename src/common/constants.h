@@ -3,6 +3,11 @@
 
 #define NSH_WORKDIR "/var/lib/nash"
 #define NSH_WORKDIR_CONTAINERS NSH_WORKDIR "/containers"
+#define NSH_WORKDIR_IMAGES NSH_WORKDIR "/images"
+
+#define NSH_STORE_SNAPSHOTS NSH_WORKDIR_IMAGES "/snapshots"
+#define NSH_STORE_MANIFESTS NSH_WORKDIR_IMAGES "/manifests"
+#define NSH_STORE_CONFIG NSH_WORKDIR_IMAGES "/config"
 
 #define NSH_FS_WORKDIR "filesystem"
 #define NSH_FS_WORKDIR_OVERLAY NSH_FS_WORKDIR "/overlay"

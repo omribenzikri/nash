@@ -55,6 +55,12 @@ static int nsh_workdir_create()
         return -1;
     }
 
+    err = mkdir_if_missing(NSH_WORKDIR_IMAGES, S_IRWXU);
+    if (err) {
+        perror("[x] Failed to create " NSH_WORKDIR_IMAGES);
+        return -1;
+    }
+
     return 0;
 }
 
