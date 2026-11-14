@@ -12,6 +12,7 @@
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
 #include <ocispec/image_spec_schema_content_descriptor.h>
 #include <ocispec/image_spec_schema_config_schema.h>
+#include <archive.h>
 #include "common/utils/filesystem.h"
 #include "common/utils/string.h"
 #include "common/utils/hashing.h"
@@ -518,4 +519,98 @@ int nsh_oci_import_manifest(const char *repo_path,
      const char *image_path, nsh_oci_image_meta_t *meta)
 {
     return nsh_oci_import_blob(repo_path, image_path, meta->manifest->config->digest);
+}
+
+static int nsh_oci_layer_archive_format(
+    image_spec_schema_content_descriptor *descriptor)
+{
+    if (strncmp(descriptor->media_type, OCI_MEDIA_TYPE_TAR,
+        strlen(OCI_MEDIA_TYPE_TAR)) == 0) {
+            return ARCHIVE_FORMAT_TAR;
+        }
+
+    return -1;
+}
+
+static int nsh_oci_layer_archive_filter(
+    image_spec_schema_content_descriptor *descriptor)
+{
+    if (strcmp(descriptor->media_type, OCI_MEDIA_TYPE_TAR) == 0)
+        return ARCHIVE_FILTER_NONE;
+    if (strcmp(descriptor->media_type, OCI_MEDIA_TYPE_TAR_GZIP) == 0)
+        return ARCHIVE_FILTER_GZIP;
+    if (strcmp(descriptor->media_type, OCI_MEDIA_TYPE_TAR_ZSTD) == 0)
+        return ARCHIVE_FILTER_ZSTD;
+
+    return -1;
+}
+
+static int nsh_oci_import_layer_unpack(
+    const char *layer_path, const char *dest_path,
+    image_spec_schema_content_descriptor *layer_descriptor)
+{
+    int layer_format = nsh_oci_layer_archive_format(layer_descriptor);
+    int layer_filter = nsh_oci_layer_archive_filter(layer_descriptor);
+
+    if (layer_format == -1 || layer_filter == -1) {
+        fprintf(stderr, "[x] Unsupported layer media type: %s\n",
+            layer_descriptor->media_type);
+        return -1;
+    }
+
+    printf("format: %d, filter: %d\n", layer_format, layer_filter);
+    printf("source: %s\n", layer_path);
+    printf("destination: %s\n", dest_path);
+
+    return 0;
+}
+
+static int nsh_oci_import_layer_single(
+    const char *repo_path, const char *image_path,
+    image_spec_schema_content_descriptor *layer_descriptor)
+{
+    char *digest = layer_descriptor->digest;
+    char layer_path[PATH_MAX];
+    char dest_path[PATH_MAX];
+    bool is_verified;
+    int err;
+
+    err = nsh_oci_digest_to_path(image_path, digest, layer_path, sizeof(layer_path));
+    if (err)
+        return -1;
+
+    snprintf(dest_path, sizeof(dest_path), "%s/%s", repo_path, digest);
+
+    err = nsh_oci_verify_blob(layer_path, digest, &is_verified);
+    if (err || !is_verified) {
+        fprintf(stderr,
+            "[x] Failed to verify layer with digest: %s\n", digest);
+        return -1;
+    }
+
+    if (access(dest_path, F_OK) == 0) {
+        printf("[*] Layer: %s already exists, skipping...\n", digest);
+        return 0;
+    }
+
+    err = nsh_oci_import_layer_unpack(layer_path, dest_path, layer_descriptor);
+    if (err) {
+        return -1;
+    }
+
+    return 0;
+}
+
+int nsh_oci_import_layers(const char *repo_path,
+    const char *image_path, nsh_oci_image_meta_t *meta)
+{
+    int err;
+
+    for (size_t i = 0; i < meta->manifest->layers_len; i++) {
+        err = nsh_oci_import_layer_single(repo_path, image_path, meta->manifest->layers[i]);
+        if (err)
+            return -1;
+    }
+
+    return 0;
 }

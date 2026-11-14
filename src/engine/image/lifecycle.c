@@ -54,7 +54,11 @@ static int nsh_image_import_blobs(const char *path)
         goto out_destroy_image_meta;
     }
 
-    goto out_destroy_image_meta;
+    err = nsh_oci_import_layers(NSH_STORE_SNAPSHOTS, path, &image_meta);
+    if (err) {
+        ret = -1;
+        goto out_destroy_image_meta;
+    }
 
 out_destroy_image_meta:
     nsh_oci_image_meta_destroy(&image_meta);

@@ -45,5 +45,7 @@ int nsh_oci_import_manifest(const char *repo_path,
     const char *image_path, nsh_oci_image_meta_t *meta);
 int nsh_oci_import_config(const char *repo_path,
     const char *image_path, nsh_oci_image_meta_t *meta);
+int nsh_oci_import_layers(const char *repo_path,
+    const char *image_path, nsh_oci_image_meta_t *meta);
 
 #endif
