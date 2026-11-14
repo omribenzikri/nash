@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <linux/limits.h>
 #include "common/constants.h"
 #include "common/utils/filesystem.h"
 #include "engine/image/oci.h"
@@ -30,7 +31,7 @@ static int nsh_image_store_create_if_missing()
     return 0;
 }
 
-static int nsh_image_import_blobs(const char *path)
+static int nsh_image_import_blobs(const char *path, char *outb, size_t outl)
 {
     nsh_oci_image_meta_t image_meta;
     int err;
@@ -60,6 +61,8 @@ static int nsh_image_import_blobs(const char *path)
         goto out_destroy_image_meta;
     }
 
+    snprintf(outb, outl, "%s", image_meta.ref);
+
 out_destroy_image_meta:
     nsh_oci_image_meta_destroy(&image_meta);
 out:
@@ -68,13 +71,14 @@ out:
 
 int nsh_image_import(const char *path)
 {
+    char ref[NAME_MAX + 1];
     int err;
 
     err = nsh_image_store_create_if_missing();
     if (err)
         return -1;
 
-    err = nsh_image_import_blobs(path);
+    err = nsh_image_import_blobs(path, ref, sizeof(ref));
     if (err)
         return -1;
 
