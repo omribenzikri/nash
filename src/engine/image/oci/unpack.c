@@ -6,9 +6,70 @@
 #include <linux/limits.h>
 #include <archive.h>
 #include <archive_entry.h>
+#include <collectc/cc_common.h>
+#include <collectc/cc_array.h>
+#include "common/utils/array.h"
 #include "engine/image/oci/unpack.h"
 
 #define NSH_OCI_LAYER_UNPACK_BLOCK_SIZE 10240
+
+typedef struct {
+    struct archive *reader;
+    struct archive *writer;
+    struct cc_array_s *hardlinks;
+} nsh_oci_unpack_context_t;
+
+static int nsh_oci_unpack_context_init(nsh_oci_unpack_context_t *ctx,
+    struct archive *reader, struct archive *writer)
+{
+    enum cc_stat cc_stat;
+
+    ctx->reader = reader;
+    ctx->writer = writer;
+
+    cc_stat = cc_array_new(&ctx->hardlinks);
+    if (cc_stat != CC_OK) {
+        fprintf(stderr, "[x] Failed to allocate hardlinks dynarray\n");
+        goto error;
+    }
+
+    return 0;
+
+error:
+    return -1;
+}
+
+static void nsh_oci_unpack_context_destroy(nsh_oci_unpack_context_t *ctx)
+{
+    cc_array_destroy_cb(ctx->hardlinks,
+        (void (*)(void *))archive_entry_free);
+}
+
+static int nsh_oci_unpack_hardlinks(nsh_oci_unpack_context_t *ctx)
+{
+    struct archive_entry *entry;
+    int retcode;
+
+    for (size_t i = 0; i < cc_array_size(ctx->hardlinks); i++) {
+        cc_array_get_at(ctx->hardlinks, i, (void **)&entry);
+
+        retcode = archive_write_header(ctx->writer, entry);
+        if (retcode != ARCHIVE_OK) {
+            fprintf(stderr, "[x] Failed to write header of layer hardlink: %s\n",
+                    archive_error_string(ctx->writer));
+            return -1;
+        }
+
+        retcode = archive_write_finish_entry(ctx->writer);
+        if (retcode != ARCHIVE_OK) {
+            fprintf(stderr, "[x] Failed to finalize layer hardlink entry: %s\n",
+                    archive_error_string(ctx->writer));
+            return -1;
+        }
+    }
+
+    return 0;
+}
 
 static int nsh_oci_unpack_content(
     struct archive *reader, struct archive *writer)
@@ -36,65 +97,102 @@ static int nsh_oci_unpack_content(
     return 0;
 }
 
-static int nsh_oci_unpack_entry(struct archive_entry *entry,
-    struct archive *reader, struct archive *writer)
+static int nsh_oci_unpack_entry(
+    struct archive_entry *entry, nsh_oci_unpack_context_t *ctx)
 {
     int retcode;
     int err;
 
-    retcode = archive_write_header(writer, entry);
+    retcode = archive_write_header(ctx->writer, entry);
     if (retcode != ARCHIVE_OK) {
         fprintf(stderr, "[x] Failed to write header of layer entry: %s\n",
-                archive_error_string(writer));
+                archive_error_string(ctx->writer));
         return -1;
     }
 
-    err = nsh_oci_unpack_content(reader, writer);
+    err = nsh_oci_unpack_content(ctx->reader, ctx->writer);
     if (err)
         return -1;
 
     return 0;
 }
 
-static int nsh_oci_handle_entry(struct archive_entry *entry,
-    struct archive *reader, struct archive *writer)
+static int nsh_oci_handle_entry(
+    struct archive_entry *entry, nsh_oci_unpack_context_t *ctx)
 {
     // TODO: verify entry validity
-    // TODO: handle hardlink
     // TODO: handle whiteout
     // TODO: handle opaque whiteout
-    if (archive_entry_hardlink(entry))
-        return 0;
+    enum cc_stat cc_stat;
 
-    return nsh_oci_unpack_entry(entry, reader, writer);
+    if (archive_entry_hardlink(entry)) {
+        cc_stat = cc_array_add_archive_entry(ctx->hardlinks, entry);
+        if (cc_stat != CC_OK) {
+            fprintf(stderr, "[x] Failed to add layer hardlink entry\n");
+            return -1;
+        }
+        return 0;
+    }
+
+    return nsh_oci_unpack_entry(entry, ctx);
 }
 
-static int nsh_oci_unpack_entries(struct archive *reader, struct archive *writer)
+static int nsh_oci_unpack_entries(nsh_oci_unpack_context_t *ctx)
 {
     struct archive_entry *entry;
-    int retcode;
     int err;
+    int retcode;
 
-    while ((retcode = archive_read_next_header(reader, &entry)) == ARCHIVE_OK) {
-        err = nsh_oci_handle_entry(entry, reader, writer);
+    while ((retcode = archive_read_next_header(ctx->reader, &entry)) == ARCHIVE_OK) {
+        err = nsh_oci_handle_entry(entry, ctx);
         if (err)
             return -1;
 
-        retcode = archive_read_data_skip(reader);
+        retcode = archive_read_data_skip(ctx->reader);
         if (retcode != ARCHIVE_OK) {
             fprintf(stderr, "[x] Failed to skip entry in layer entry: %s\n",
-                    archive_error_string(writer));
+                    archive_error_string(ctx->reader));
             return -1;
         }
     }
 
     if (retcode != ARCHIVE_EOF) {
         fprintf(stderr, "[x] Failed to read header of layer entry: %s\n",
-                archive_error_string(reader));
+                archive_error_string(ctx->reader));
         return -1;
     }
 
     return 0;
+}
+
+static int nsh_oci_unpack_internal(struct archive *reader, struct archive *writer)
+{
+    nsh_oci_unpack_context_t ctx;
+    int err;
+    int ret = 0;
+
+    err = nsh_oci_unpack_context_init(&ctx, reader, writer);
+    if (err) {
+        ret = -1;
+        goto out;
+    }
+
+    err = nsh_oci_unpack_entries(&ctx);
+    if (err) {
+        ret = -1;
+        goto out_destroy_context;
+    }
+
+    err = nsh_oci_unpack_hardlinks(&ctx);
+    if (err) {
+        ret = -1;
+        goto out_destroy_context;
+    }
+
+out_destroy_context:
+    nsh_oci_unpack_context_destroy(&ctx);
+out:
+    return ret;
 }
 
 static int nsh_oci_unpack_archive(int fd, int format, int filter)
@@ -130,7 +228,7 @@ static int nsh_oci_unpack_archive(int fd, int format, int filter)
         goto out;
     }
 
-    err = nsh_oci_unpack_entries(reader, writer);
+    err = nsh_oci_unpack_internal(reader, writer);
     if (err) {
         ret = -1;
         goto out;

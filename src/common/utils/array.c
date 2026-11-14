@@ -123,3 +123,26 @@ enum cc_stat cc_array_extend_strings(CC_Array *ar, char **src, size_t len)
 
     return CC_OK;
 }
+
+enum cc_stat cc_array_add_archive_entry(CC_Array *ar, struct archive_entry *entry)
+{
+    struct archive_entry *clone;
+    enum cc_stat stat;
+
+    clone = archive_entry_clone(entry);
+    if (clone == NULL) {
+        stat = CC_ERR_ALLOC;
+        goto error;
+    }
+
+    stat = cc_array_add(ar, clone);
+    if (stat != CC_OK)
+        goto error_free_clone;
+
+    return 0;
+
+error_free_clone:
+    archive_entry_free(clone);
+error:
+    return stat;
+}
