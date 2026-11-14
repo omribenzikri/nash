@@ -16,6 +16,7 @@
 #include "common/utils/filesystem.h"
 #include "common/utils/string.h"
 #include "common/utils/hashing.h"
+#include "engine/image/oci/unpack.h"
 #include "engine/image/oci.h"
 
 #define OCI_WHITEOUT_PREFIX ".wh."
@@ -546,11 +547,12 @@ static int nsh_oci_layer_archive_filter(
 }
 
 static int nsh_oci_import_layer_unpack(
-    const char *layer_path, const char *dest_path,
+    const char *path, const char *dest_path,
     image_spec_schema_content_descriptor *layer_descriptor)
 {
     int layer_format = nsh_oci_layer_archive_format(layer_descriptor);
     int layer_filter = nsh_oci_layer_archive_filter(layer_descriptor);
+    int err;
 
     if (layer_format == -1 || layer_filter == -1) {
         fprintf(stderr, "[x] Unsupported layer media type: %s\n",
@@ -558,9 +560,9 @@ static int nsh_oci_import_layer_unpack(
         return -1;
     }
 
-    printf("format: %d, filter: %d\n", layer_format, layer_filter);
-    printf("source: %s\n", layer_path);
-    printf("destination: %s\n", dest_path);
+    err = nsh_oci_layer_unpack(path, dest_path, layer_format, layer_filter);
+    if (err)
+        return -1;
 
     return 0;
 }
@@ -587,6 +589,9 @@ static int nsh_oci_import_layer_single(
             "[x] Failed to verify layer with digest: %s\n", digest);
         return -1;
     }
+
+    // TEMP
+    rmdir_recursive(dest_path);
 
     if (access(dest_path, F_OK) == 0) {
         printf("[*] Layer: %s already exists, skipping...\n", digest);
