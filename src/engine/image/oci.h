@@ -41,11 +41,14 @@ bool nsh_oci_is_regular_whiteout(const char *pathname);
 bool nsh_oci_is_opaque_whiteout(const char *pathname);
 int nsh_oci_whiteout_to_file(const char *pathname, char *buf, size_t size);
 
-int nsh_oci_import_manifest(const char *repo_path,
-    const char *image_path, nsh_oci_image_meta_t *meta);
-int nsh_oci_import_config(const char *repo_path,
-    const char *image_path, nsh_oci_image_meta_t *meta);
-int nsh_oci_import_layers(const char *repo_path,
-    const char *image_path, nsh_oci_image_meta_t *meta);
+int nsh_oci_import_manifest(
+    const char *repo_path, const char *image_path,
+    nsh_oci_image_meta_t *meta, char **out);
+int nsh_oci_import_config(
+    const char *repo_path, const char *image_path,
+    nsh_oci_image_meta_t *meta, char **out);
+int nsh_oci_import_layers(
+    const char *repo_path, const char *image_path,
+    nsh_oci_image_meta_t *meta, char ***outp, size_t *outl);
 
 #endif

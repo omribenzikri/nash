@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <stddef.h>
@@ -510,15 +511,21 @@ static int nsh_oci_import_blob(
     return 0;
 }
 
-int nsh_oci_import_manifest(const char *repo_path,
-    const char *image_path, nsh_oci_image_meta_t *meta)
+int nsh_oci_import_manifest(
+    const char *repo_path, const char *image_path,
+    nsh_oci_image_meta_t *meta, char **out)
 {
+    *out = meta->ref;
+
     return nsh_oci_import_blob(repo_path, image_path, meta->ref);
 }
 
- int nsh_oci_import_config(const char *repo_path,
-     const char *image_path, nsh_oci_image_meta_t *meta)
+ int nsh_oci_import_config(
+     const char *repo_path, const char *image_path,
+     nsh_oci_image_meta_t *meta, char **out)
 {
+    *out = meta->manifest->config->digest;
+
     return nsh_oci_import_blob(repo_path, image_path, meta->manifest->config->digest);
 }
 
@@ -603,16 +610,34 @@ static int nsh_oci_import_layer_single(
     return 0;
 }
 
-int nsh_oci_import_layers(const char *repo_path,
-    const char *image_path, nsh_oci_image_meta_t *meta)
+int nsh_oci_import_layers(
+    const char *repo_path, const char *image_path,
+    nsh_oci_image_meta_t *meta, char ***outp, size_t *outl)
 {
+    char **digests;
     int err;
 
-    for (size_t i = 0; i < meta->manifest->layers_len; i++) {
-        err = nsh_oci_import_layer_single(repo_path, image_path, meta->manifest->layers[i]);
-        if (err)
-            return -1;
+    digests = calloc(meta->manifest->layers_len, sizeof(*digests));
+    if (digests == NULL) {
+        fprintf(stderr ,"[x] Failed to allocate layer digests array\n");
+        goto error;
     }
 
+    for (size_t i = 0; i < meta->manifest->layers_len; i++) {
+        digests[i] = meta->manifest->layers[i]->digest;
+
+        err = nsh_oci_import_layer_single(repo_path, image_path, meta->manifest->layers[i]);
+        if (err)
+            goto error_free_digests;
+    }
+
+    *outp = digests;
+    *outl = meta->manifest->layers_len;
+
     return 0;
+
+error_free_digests:
+    free(digests);
+error:
+    return -1;
 }

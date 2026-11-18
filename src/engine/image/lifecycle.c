@@ -4,6 +4,7 @@
 #include <uuid/uuid.h>
 #include "common/constants.h"
 #include "common/utils/filesystem.h"
+#include "common/utils/macros.h"
 #include "engine/persistence/database.h"
 #include "engine/persistence/repos/images.h"
 #include "engine/image/oci.h"
@@ -35,6 +36,52 @@ static int nsh_image_store_create_if_missing()
     return 0;
 }
 
+static int nsh_image_import_manifest(const char *path, nsh_oci_image_meta_t *image_meta)
+{
+    char *digest;
+    int err;
+
+    err = nsh_oci_import_manifest(NSH_STORE_MANIFESTS, path, image_meta, &digest);
+    if (err)
+        return -1;
+
+    return 0;
+}
+
+static int nsh_image_import_config(const char *path, nsh_oci_image_meta_t *image_meta)
+{
+    char *digest;
+    int err;
+
+    err = nsh_oci_import_config(NSH_STORE_CONFIG, path, image_meta, &digest);
+    if (err)
+        return -1;
+
+    return 0;
+}
+
+static int nsh_image_import_layers(const char *path, nsh_oci_image_meta_t *image_meta)
+{
+    ARRAY_WITH_LEN(char *, digests);
+    int err;
+    int ret = 0;
+
+    err = nsh_oci_import_layers(
+        NSH_STORE_SNAPSHOTS, path, image_meta,
+        &digests, &digests_len);
+    if (err) {
+        ret = -1;
+        goto out;
+    }
+
+    goto out_free_digests;
+
+out_free_digests:
+    free(digests);
+out:
+    return ret;
+}
+
 static int nsh_image_import_blobs(const char *path, char *outb, size_t outl)
 {
     nsh_oci_image_meta_t image_meta;
@@ -47,19 +94,19 @@ static int nsh_image_import_blobs(const char *path, char *outb, size_t outl)
         goto out;
     }
 
-    err = nsh_oci_import_manifest(NSH_STORE_MANIFESTS, path, &image_meta);
+    err = nsh_image_import_manifest(path, &image_meta);
     if (err) {
         ret = -1;
         goto out_destroy_image_meta;
     }
 
-    err = nsh_oci_import_config(NSH_STORE_CONFIG, path, &image_meta);
+    err = nsh_image_import_config(path, &image_meta);
     if (err) {
         ret = -1;
         goto out_destroy_image_meta;
     }
 
-    err = nsh_oci_import_layers(NSH_STORE_SNAPSHOTS, path, &image_meta);
+    err = nsh_image_import_layers(path, &image_meta);
     if (err) {
         ret = -1;
         goto out_destroy_image_meta;
