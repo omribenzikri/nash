@@ -25,3 +25,4 @@ Linux container engine POC in the works.
 * `libblake3`
 * `libarchive`
 * `libcollectc`
+* `libsqlite3`

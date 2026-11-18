@@ -1,7 +1,11 @@
 #include <stdio.h>
+#include <time.h>
 #include <linux/limits.h>
+#include <uuid/uuid.h>
 #include "common/constants.h"
 #include "common/utils/filesystem.h"
+#include "engine/persistence/database.h"
+#include "engine/persistence/repos/images.h"
 #include "engine/image/oci.h"
 #include "engine/image/lifecycle.h"
 
@@ -69,18 +73,73 @@ out:
     return ret;
 }
 
-int nsh_image_import(const char *path)
+static int nsh_image_import_persist(nsh_database_t *db, const char *name, const char *ref)
 {
-    char ref[NAME_MAX + 1];
+    nsh_image_entity_t entity;
     int err;
+
+    uuid_generate(entity.id);
+    entity.name = name;
+    entity.ref = ref;
+    entity.created_at = time(NULL);
+
+    err = nsh_images_repo_add(db, &entity);
+    if (err)
+        return -1;
+
+    return 0;
+}
+
+static int nsh_image_import_internal(
+    nsh_database_t *db, const char *path, const char *name)
+{
+    int err;
+    bool image_exists;
+    char image_ref[NAME_MAX + 1];
+
+    err = nsh_images_repo_exists_by_name(db, name, &image_exists);
+    if (err)
+        return -1;
+    if (image_exists) {
+        fprintf(stderr, "[x] Failed to import image: %s: image already exists\n", name);
+        return -1;
+    }
 
     err = nsh_image_store_create_if_missing();
     if (err)
         return -1;
 
-    err = nsh_image_import_blobs(path, ref, sizeof(ref));
+    err = nsh_image_import_blobs(path, image_ref, sizeof(image_ref));
+    if (err)
+        return -1;
+
+    err = nsh_image_import_persist(db, name, image_ref);
     if (err)
         return -1;
 
     return 0;
+}
+
+int nsh_image_import(const char *path, const char *name)
+{
+    nsh_database_t *db;
+    int err;
+    int ret = 0;
+
+    db = nsh_database_open();
+    if (db == NULL) {
+        ret = -1;
+        goto out;
+    }
+
+    err = nsh_image_import_internal(db, path, name);
+    if (err) {
+        ret = -1;
+        goto out_close_db;
+    }
+
+out_close_db:
+    nsh_database_close(db);
+out:
+    return ret;
 }

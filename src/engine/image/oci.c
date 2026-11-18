@@ -590,9 +590,6 @@ static int nsh_oci_import_layer_single(
         return -1;
     }
 
-    // TEMP
-    rmdir_recursive(dest_path);
-
     if (access(dest_path, F_OK) == 0) {
         printf("[*] Layer: %s already exists, skipping...\n", digest);
         return 0;

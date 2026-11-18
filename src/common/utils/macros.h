@@ -1,6 +1,9 @@
 #ifndef _NASH_COMMON_UTILS_MACROS_H
 #define _NASH_COMMON_UTILS_MACROS_H
 
+#define STRINGIFY_IMPL(x) #x
+#define STRINGIFY(x) STRINGIFY_IMPL(x)
+
 #define ARRAY_LEN(name) sizeof(name) / sizeof(*name);
 
 #define ARRAY_WITH_LEN(type, name) type *name; size_t name##_len;
