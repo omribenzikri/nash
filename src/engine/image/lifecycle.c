@@ -6,6 +6,7 @@
 #include "common/utils/filesystem.h"
 #include "common/utils/macros.h"
 #include "engine/persistence/database.h"
+#include "engine/persistence/repos/blobs.h"
 #include "engine/persistence/repos/images.h"
 #include "engine/image/oci.h"
 #include "engine/image/lifecycle.h"
@@ -36,7 +37,8 @@ static int nsh_image_store_create_if_missing()
     return 0;
 }
 
-static int nsh_image_import_manifest(const char *path, nsh_oci_image_meta_t *image_meta)
+static int nsh_image_import_manifest(
+    const char *path, nsh_oci_image_meta_t *image_meta, nsh_database_t *db)
 {
     char *digest;
     int err;
@@ -45,10 +47,15 @@ static int nsh_image_import_manifest(const char *path, nsh_oci_image_meta_t *ima
     if (err)
         return -1;
 
+    err = nsh_blobs_repo_acquire(db, digest);
+    if (err)
+        return -1;
+
     return 0;
 }
 
-static int nsh_image_import_config(const char *path, nsh_oci_image_meta_t *image_meta)
+static int nsh_image_import_config(
+    const char *path, nsh_oci_image_meta_t *image_meta, nsh_database_t *db)
 {
     char *digest;
     int err;
@@ -57,10 +64,15 @@ static int nsh_image_import_config(const char *path, nsh_oci_image_meta_t *image
     if (err)
         return -1;
 
+    err = nsh_blobs_repo_acquire(db, digest);
+    if (err)
+        return -1;
+
     return 0;
 }
 
-static int nsh_image_import_layers(const char *path, nsh_oci_image_meta_t *image_meta)
+static int nsh_image_import_layers(
+    const char *path, nsh_oci_image_meta_t *image_meta, nsh_database_t *db)
 {
     ARRAY_WITH_LEN(char *, digests);
     int err;
@@ -74,7 +86,13 @@ static int nsh_image_import_layers(const char *path, nsh_oci_image_meta_t *image
         goto out;
     }
 
-    goto out_free_digests;
+    for (size_t i = 0; i < digests_len; i++) {
+        err = nsh_blobs_repo_acquire(db, digests[i]);
+        if (err) {
+            ret = -1;
+            goto out_free_digests;
+        }
+    }
 
 out_free_digests:
     free(digests);
@@ -82,7 +100,8 @@ out:
     return ret;
 }
 
-static int nsh_image_import_blobs(const char *path, char *outb, size_t outl)
+static int nsh_image_import_blobs(
+    const char *path, nsh_database_t *db, char *outb, size_t outl)
 {
     nsh_oci_image_meta_t image_meta;
     int err;
@@ -94,19 +113,19 @@ static int nsh_image_import_blobs(const char *path, char *outb, size_t outl)
         goto out;
     }
 
-    err = nsh_image_import_manifest(path, &image_meta);
+    err = nsh_image_import_manifest(path, &image_meta, db);
     if (err) {
         ret = -1;
         goto out_destroy_image_meta;
     }
 
-    err = nsh_image_import_config(path, &image_meta);
+    err = nsh_image_import_config(path, &image_meta, db);
     if (err) {
         ret = -1;
         goto out_destroy_image_meta;
     }
 
-    err = nsh_image_import_layers(path, &image_meta);
+    err = nsh_image_import_layers(path, &image_meta, db);
     if (err) {
         ret = -1;
         goto out_destroy_image_meta;
@@ -138,7 +157,7 @@ static int nsh_image_import_persist(nsh_database_t *db, const char *name, const 
 }
 
 static int nsh_image_import_internal(
-    nsh_database_t *db, const char *path, const char *name)
+    const char *path, const char *name, nsh_database_t *db)
 {
     int err;
     bool image_exists;
@@ -156,7 +175,7 @@ static int nsh_image_import_internal(
     if (err)
         return -1;
 
-    err = nsh_image_import_blobs(path, image_ref, sizeof(image_ref));
+    err = nsh_image_import_blobs(path, db, image_ref, sizeof(image_ref));
     if (err)
         return -1;
 
@@ -179,7 +198,7 @@ int nsh_image_import(const char *path, const char *name)
         goto out;
     }
 
-    err = nsh_image_import_internal(db, path, name);
+    err = nsh_image_import_internal(path, name, db);
     if (err) {
         ret = -1;
         goto out_close_db;

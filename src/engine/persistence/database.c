@@ -5,6 +5,7 @@
 #include <sqlite3.h>
 #include "common/constants.h"
 #include "engine/persistence/repos/images.h"
+#include "engine/persistence/repos/blobs.h"
 #include "engine/persistence/internal/database.h"
 #include "engine/persistence/database.h"
 
@@ -18,6 +19,10 @@ static int nsh_database_repos_init(nsh_database_t *db)
     assert(NSH_UUID_TYPE_LEN == sizeof(uuid_t));
 
     err = nsh_images_repo_create(db);
+    if (err)
+        return -1;
+
+    err = nsh_blobs_repo_create(db);
     if (err)
         return -1;
 
