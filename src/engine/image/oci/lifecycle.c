@@ -11,6 +11,8 @@
 #include "common/utils/string.h"
 #include "common/utils/filesystem.h"
 #include "common/utils/macros.h"
+#include "engine/persistence/database.h"
+#include "engine/persistence/repos/blobs.h"
 #include "engine/image/oci/parse.h"
 #include "engine/image/oci/bundle.h"
 #include "engine/image/oci/store.h"
@@ -20,12 +22,6 @@
 #define OCI_HASH_ALG_SHA256 "sha256"
 #define OCI_HASH_ALG_SHA512 "sha512"
 #define OCI_HASH_ALG_BLAKE3 "blake3"
-
-void nsh_oci_lc_context_destroy(nsh_oci_lc_context_t *ctx)
-{
-    free(ctx->ref);
-    ARRAY_FREE_DEEP(ctx->blob_digests);
-}
 
 static int nsh_oci_image_store_create_if_missing()
 {
@@ -231,9 +227,9 @@ static int nsh_oci_import_layer(
     return 0;
 }
 
-static int nsh_oci_import_content(const char *bundle_path,
+static int nsh_oci_import_content(const char *bundle_path, const char *ref,
     nsh_oci_image_meta_t *meta, nsh_oci_image_store_t *store,
-    nsh_oci_lc_context_t *ctx)
+    char ***out_digests, size_t*out_digests_len)
 {
     struct cc_array_s *digests;
     enum cc_stat cc_stat;
@@ -254,8 +250,7 @@ static int nsh_oci_import_content(const char *bundle_path,
     }
 
     err = nsh_oci_import_blob(
-        store->manifests_repo_path, bundle_path,
-        ctx->ref, digests);
+        store->manifests_repo_path, bundle_path, ref, digests);
     if (err)
         goto error_destroy_digests;
 
@@ -266,7 +261,7 @@ static int nsh_oci_import_content(const char *bundle_path,
         goto error_destroy_digests;
 
     cc_stat = cc_array_to_static_shallow(digests,
-        (void ***)&ctx->blob_digests, &ctx->blob_digests_len);
+        (void ***)out_digests, out_digests_len);
     if (cc_stat != CC_OK) {
         fprintf(stderr, "[x] Failed to allocate digests array\n");
         goto error_destroy_digests;
@@ -282,8 +277,36 @@ error:
     return -1;
 }
 
-int nsh_oci_image_import(const char *bundle_path, nsh_oci_lc_context_t *ctx)
+static int nsh_oci_import_persist(char **digests, size_t digests_len)
 {
+    nsh_database_t *db;
+    int err;
+    int ret = 0;
+
+    db = nsh_database_open();
+    if (db == NULL) {
+        ret = -1;
+        goto out;
+    }
+
+    for (size_t i = 0; i < digests_len; i++) {
+        err = nsh_blobs_repo_acquire(db, digests[i]);
+        if (err) {
+            ret = -1;
+            goto out_close_db;
+        }
+    }
+
+out_close_db:
+    nsh_database_close(db);
+out:
+    return ret;
+}
+
+int nsh_oci_image_import(const char *bundle_path, char **out)
+{
+    ARRAY_WITH_LEN(char *, digests);
+    char *ref;
     nsh_oci_image_meta_t meta;
     nsh_oci_image_store_t store;
     int err;
@@ -297,19 +320,29 @@ int nsh_oci_image_import(const char *bundle_path, nsh_oci_lc_context_t *ctx)
         goto out;
     }
 
-    err = nsh_oci_bundle_load_image_meta(&meta, bundle_path, &ctx->ref);
+    err = nsh_oci_bundle_load_image_meta(&meta, bundle_path, &ref);
     if (err) {
         ret = -1;
         goto out;
     }
 
-    err = nsh_oci_import_content(bundle_path, &meta, &store, ctx);
+    err = nsh_oci_import_content(bundle_path, ref, &meta, &store, &digests, &digests_len);
     if (err) {
         ret = -1;
-        goto out_destroy_meta_and_ref;
+        goto out_destroy_meta;
     }
 
-out_destroy_meta_and_ref:
+    err = nsh_oci_import_persist(digests, digests_len);
+    if (err) {
+        ret = -1;
+        goto out_free_digests;
+    }
+
+    *out = ref;
+
+out_free_digests:
+    ARRAY_FREE_DEEP(digests);
+out_destroy_meta:
     nsh_oci_image_meta_destroy(&meta);
 out:
     return ret;
