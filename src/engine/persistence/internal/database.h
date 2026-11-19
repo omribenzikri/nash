@@ -3,15 +3,15 @@
 
 #include <sqlite3.h>
 #include <uuid/uuid.h>
-#include "common/utils/macros.h"
-
-#define NSH_UUID_TYPE_LEN 16
-#define NSH_UUID_TYPE "BLOB CHECK(length(id) = " STRINGIFY(NSH_UUID_TYPE_LEN) ")"
 
 struct nsh_database {
     sqlite3 *conn;
 };
 
-const unsigned char *nsh_column_uuid(sqlite3_stmt *stmt, int idx);
+typedef enum {
+    NSH_DB_ITER_CONTINUE,
+    NSH_DB_ITER_STOP,
+    NSH_DB_ITER_ERR
+} nsh_database_iter_cb_ret_t;
 
 #endif

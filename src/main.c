@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <cli/run.h>
 #include <cli/import.h>
+#include <cli/rmi.h>
 #include "startup.h"
 
 static int nsh_handle_command(int argc, char **argv)
@@ -22,6 +23,9 @@ static int nsh_handle_command(int argc, char **argv)
     }
     else if (strncmp(cmd, NSH_CLI_IMPORT_CMD, ARG_MAX) == 0) {
         return nsh_cli_import_handle(argc, argv);
+    }
+    else if (strncmp(cmd, NSH_CLI_RMI_CMD, ARG_MAX) == 0) {
+        return nsh_cli_rmi_handle(argc, argv);
     }
     else {
         fprintf(stderr, "Error: unknown command nash %s\n", cmd);

@@ -6,6 +6,7 @@
 #include "common/constants.h"
 #include "engine/persistence/repos/images.h"
 #include "engine/persistence/repos/blobs.h"
+#include "engine/persistence/internal/uuid.h"
 #include "engine/persistence/internal/database.h"
 #include "engine/persistence/database.h"
 

@@ -280,7 +280,7 @@ error:
 static int nsh_oci_import_persist(char **digests, size_t digests_len)
 {
     nsh_database_t *db;
-    int err;
+    int refcount;
     int ret = 0;
 
     db = nsh_database_open();
@@ -290,8 +290,8 @@ static int nsh_oci_import_persist(char **digests, size_t digests_len)
     }
 
     for (size_t i = 0; i < digests_len; i++) {
-        err = nsh_blobs_repo_acquire(db, digests[i]);
-        if (err) {
+        refcount = nsh_blobs_repo_acquire(db, digests[i]);
+        if (refcount == -1) {
             ret = -1;
             goto out_close_db;
         }
@@ -344,6 +344,84 @@ out_free_digests:
     ARRAY_FREE_DEEP(digests);
 out_destroy_meta:
     nsh_oci_image_meta_destroy(&meta);
+out:
+    return ret;
+}
+
+static int nsh_oci_image_release_blob(
+    nsh_database_t *db, const char *repo_path, const char *digest)
+{
+    char path[PATH_MAX];
+    int refcount;
+    int err;
+
+    // TODO: fix race conditions
+
+    refcount = nsh_blobs_repo_release(db, digest);
+    if (refcount == -1)
+        return -1;
+    if (refcount == 0) {
+        nsh_oci_store_blob_path_resolve(
+            repo_path, digest, path, sizeof(path));
+
+        err = rmdir_recursive(path);
+        if (err) {
+            perror("[x] Failed to delete blob");
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+int nsh_oci_image_delete(const char *ref)
+{
+    nsh_database_t *db;
+    nsh_oci_image_meta_t meta;
+    nsh_oci_image_store_t store;
+    int err;
+    int ret = 0;
+
+    nsh_oci_image_store_init(&store);
+
+    db = nsh_database_open();
+    if (db == NULL) {
+        ret = -1;
+        goto out;
+    }
+
+    err = nsh_oci_store_load_image_meta(&meta, &store, ref);
+    if (err) {
+        ret = -1;
+        goto out_close_db;
+    }
+
+    for (size_t i = 0; i < meta.manifest->layers_len; i++) {
+        err = nsh_oci_image_release_blob(db, store.snapshots_repo_path,
+            meta.manifest->layers[i]->digest);
+        if (err) {
+            ret = -1;
+            goto out_destroy_meta;
+        }
+    }
+
+    err = nsh_oci_image_release_blob(
+        db, store.config_repo_path, meta.manifest->config->digest);
+    if (err) {
+        ret = -1;
+        goto out_destroy_meta;
+    }
+
+    err = nsh_oci_image_release_blob(db, store.manifests_repo_path, ref);
+    if (err) {
+        ret = -1;
+        goto out_destroy_meta;
+    }
+
+out_destroy_meta:
+    nsh_oci_image_meta_destroy(&meta);
+out_close_db:
+    nsh_database_close(db);
 out:
     return ret;
 }
