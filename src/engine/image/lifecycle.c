@@ -3,6 +3,7 @@
 #include <time.h>
 #include <linux/limits.h>
 #include <uuid/uuid.h>
+#include "common/constants.h"
 #include "engine/persistence/database.h"
 #include "engine/persistence/repos/images.h"
 #include "engine/image/oci/lifecycle.h"
@@ -44,7 +45,7 @@ static int nsh_image_import_internal(
         goto out;
     }
 
-    err = nsh_oci_image_import(path, &ref);
+    err = nsh_oci_image_import(NSH_WORKDIR_IMAGES, path, &ref);
     if (err) {
         ret = -1;
         goto out;
@@ -110,7 +111,7 @@ int nsh_image_delete(const char *name)
         goto out_close_db;
     }
 
-    err = nsh_oci_image_delete(entity->ref);
+    err = nsh_oci_image_delete(NSH_WORKDIR_IMAGES, entity->ref);
     if (err) {
         ret = -1;
         goto out_free_entity;

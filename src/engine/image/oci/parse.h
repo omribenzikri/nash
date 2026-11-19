@@ -16,7 +16,7 @@ image_spec_schema_image_index_schema *nsh_oci_index_parse(const char *path);
 image_spec_schema_image_manifest_schema *nsh_oci_manifest_parse(const char *path);
 image_spec_schema_config_schema *nsh_oci_config_parse(const char *path);
 
-int nsh_oci_layer_archive_format(image_spec_schema_content_descriptor *layer);
-int nsh_oci_layer_archive_filter(image_spec_schema_content_descriptor *layer);
+int nsh_oci_layer_archive_format(const char *media_type);
+int nsh_oci_layer_archive_filter(const char *media_type);
 
 #endif

@@ -7,13 +7,8 @@
 #include <ocispec/image_spec_schema_image_index_schema.h>
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
 #include <ocispec/image_spec_schema_config_schema.h>
+#include "engine/image/oci/common.h"
 #include "engine/image/oci/parse.h"
-
-#define OCI_MEDIA_TYPE_MANIFEST "application/vnd.oci.image.manifest.v1+json"
-#define OCI_MEDIA_TYPE_CONFIG "application/vnd.oci.image.config.v1+json"
-#define OCI_MEDIA_TYPE_TAR "application/vnd.oci.image.layer.v1.tar"
-#define OCI_MEDIA_TYPE_TAR_GZIP "application/vnd.oci.image.layer.v1.tar+gzip"
-#define OCI_MEDIA_TYPE_TAR_ZSTD "application/vnd.oci.image.layer.v1.tar+zstd"
 
 #define NSH_OCI_SUPPORTED_IMAGE_LAYOUT_VERSION "1.0.0"
 
@@ -145,9 +140,9 @@ image_spec_schema_config_schema *nsh_oci_config_parse(const char *path)
     return config;
 }
 
-int nsh_oci_layer_archive_format(image_spec_schema_content_descriptor *layer)
+int nsh_oci_layer_archive_format(const char *media_type)
 {
-    if (strncmp(layer->media_type, OCI_MEDIA_TYPE_TAR,
+    if (strncmp(media_type, OCI_MEDIA_TYPE_TAR,
         strlen(OCI_MEDIA_TYPE_TAR)) == 0) {
             return ARCHIVE_FORMAT_TAR;
         }
@@ -155,13 +150,13 @@ int nsh_oci_layer_archive_format(image_spec_schema_content_descriptor *layer)
     return -1;
 }
 
-int nsh_oci_layer_archive_filter(image_spec_schema_content_descriptor *layer)
+int nsh_oci_layer_archive_filter(const char *media_type)
 {
-    if (strcmp(layer->media_type, OCI_MEDIA_TYPE_TAR) == 0)
+    if (strcmp(media_type, OCI_MEDIA_TYPE_TAR) == 0)
         return ARCHIVE_FILTER_NONE;
-    if (strcmp(layer->media_type, OCI_MEDIA_TYPE_TAR_GZIP) == 0)
+    if (strcmp(media_type, OCI_MEDIA_TYPE_TAR_GZIP) == 0)
         return ARCHIVE_FILTER_GZIP;
-    if (strcmp(layer->media_type, OCI_MEDIA_TYPE_TAR_ZSTD) == 0)
+    if (strcmp(media_type, OCI_MEDIA_TYPE_TAR_ZSTD) == 0)
         return ARCHIVE_FILTER_ZSTD;
 
     return -1;

@@ -3,10 +3,8 @@
 #include <string.h>
 #include <linux/limits.h>
 #include "common/utils/filesystem.h"
+#include "engine/image/oci/common.h"
 #include "engine/image/oci/whiteout.h"
-
-#define OCI_WHITEOUT_PREFIX ".wh."
-#define OCI_OPAQUE_WHITEOUT_NAME ".wh..wh..opq"
 
 bool nsh_oci_is_whiteout_new(const char *path)
 {

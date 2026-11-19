@@ -3,17 +3,25 @@
 
 #include "engine/image/oci/common.h"
 
-typedef struct {
-    const char *snapshots_repo_path;
-    const char *manifests_repo_path;
-    const char *config_repo_path;
-} nsh_oci_image_store_t;
+int nsh_oci_store_create(const char *store_path);
 
-void nsh_oci_store_blob_path_resolve(
-    const char *repo_path, const char *digest,
+void nsh_oci_store_manifest_path_resolve(
+    const char *store_path, const char *digest,
     char *buf, size_t size);
 
+void nsh_oci_store_config_path_resolve(
+    const char *store_path, const char *digest,
+    char *buf, size_t size);
+
+void nsh_oci_store_snapshot_path_resolve(
+    const char *store_path, const char *digest,
+    char *buf, size_t size);
+
+void nsh_oci_store_blob_path_resolve(
+    const char *store_path, const char *digest,
+    nsh_oci_blob_type_t type, char *buf, size_t size);
+
 int nsh_oci_store_load_image_meta(nsh_oci_image_meta_t *meta,
-    nsh_oci_image_store_t *store, const char *ref);
+    const char *store_path, const char *ref);
 
 #endif
