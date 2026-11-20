@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stddef.h>
 #include <sqlite3.h>
-#include "engine/persistence/internal/database.h"
+#include "engine/persistence/internal/database.h" // IWYU pragma: keep
 #include "engine/persistence/repos/blobs.h"
 
 static const char *nsh_blobs_create_table_sql =

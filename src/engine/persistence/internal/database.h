@@ -8,10 +8,4 @@ struct nsh_database {
     sqlite3 *conn;
 };
 
-typedef enum {
-    NSH_DB_ITER_CONTINUE,
-    NSH_DB_ITER_STOP,
-    NSH_DB_ITER_ERR
-} nsh_database_iter_cb_ret_t;
-
 #endif

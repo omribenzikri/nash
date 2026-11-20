@@ -7,7 +7,7 @@
 #include "engine/persistence/repos/images.h"
 #include "engine/persistence/repos/blobs.h"
 #include "engine/persistence/internal/uuid.h"
-#include "engine/persistence/internal/database.h"
+#include "engine/persistence/internal/database.h" // IWYU pragma: keep
 #include "engine/persistence/database.h"
 
 #define NSH_DB_PATH NSH_WORKDIR "/nash.db"

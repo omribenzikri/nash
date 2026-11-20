@@ -1,10 +1,11 @@
-#include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
 #include <sqlite3.h>
 #include <uuid/uuid.h>
+#include <collectc/cc_common.h>
+#include <collectc/cc_array.h>
+#include "common/entities/image.h"
 #include "engine/persistence/database.h"
-#include "engine/persistence/internal/database.h"
+#include "engine/persistence/internal/database.h" // IWYU pragma: keep
 #include "engine/persistence/internal/uuid.h"
 #include "engine/persistence/repos/images.h"
 
@@ -15,6 +16,10 @@ static const char *nsh_images_create_table_sql =
     "   ref TEXT NOT NULL,"
     "   created_at INTEGER NOT NULL"
     ");";
+
+static const char *nsh_images_select_sql =
+    "SELECT id, name, ref, created_at "
+    "FROM images;";
 
 static const char *nsh_images_select_by_name_sql =
     "SELECT id, name, ref, created_at "
@@ -28,66 +33,6 @@ static const char *nsh_images_insert_sql =
 static const char *nsh_images_delete_by_id_sql =
     "DELETE FROM images "
     "WHERE id = ?;";
-
-nsh_image_entity_t *nsh_image_entity_alloc(
-    const uuid_t id, const char *name, const char *ref, time_t created_at)
-{
-    nsh_image_entity_t *entity;
-
-    entity = malloc(sizeof(*entity));
-    if (entity == NULL) {
-        perror("[x] Failed to allocate image entity");
-        goto error;
-    }
-
-    uuid_copy(entity->id, id);
-
-    entity->name = strdup(name);
-    if (entity->name == NULL) {
-        perror("[x] Failed to copy image entity name");
-        goto error_free_entity;
-    }
-
-    entity->ref = strdup(ref);
-    if (entity->ref == NULL) {
-        perror("[x] Failed to copy image ref");
-        goto error_free_name;
-    }
-
-    entity->created_at = created_at;
-
-    return entity;
-
-error_free_name:
-    free(entity->name);
-error_free_entity:
-    free(entity);
-error:
-    return NULL;
-}
-
-nsh_image_entity_t *nsh_image_entity_clone(nsh_image_entity_t *entity)
-{
-    return nsh_image_entity_alloc(
-        entity->id, entity->name, entity->ref, entity->created_at);
-}
-
-void nsh_image_entity_free(nsh_image_entity_t *entity)
-{
-    free(entity->name);
-    free(entity->ref);
-    free(entity);
-}
-
-static nsh_image_entity_t *nsh_image_entity_load(sqlite3_stmt *stmt)
-{
-    return nsh_image_entity_alloc(
-        nsh_column_uuid(stmt, 0),
-        (const char *)sqlite3_column_text(stmt, 1),
-        (const char *)sqlite3_column_text(stmt, 2),
-        sqlite3_column_int64(stmt, 3)
-    );
-}
 
 int nsh_images_repo_create(nsh_database_t *db)
 {
@@ -107,26 +52,105 @@ int nsh_images_repo_create(nsh_database_t *db)
     return 0;
 }
 
-static int nsh_images_repo_iter_process(sqlite3_stmt *stmt,
-    int (*cb)(nsh_image_entity_t *, void *), void *data)
+static nsh_image_entity_t *nsh_images_repo_load_row(sqlite3_stmt *stmt)
+{
+    const unsigned char *id = nsh_column_uuid(stmt, 0);
+    const char *name = (const char *)sqlite3_column_text(stmt, 1);
+    const char *ref = (const char *)sqlite3_column_text(stmt, 2);
+    const time_t created_at = sqlite3_column_int64(stmt, 3);
+
+    return nsh_image_entity_new(id, name, ref, created_at);
+}
+
+static int nsh_images_repo_append_row(sqlite3_stmt *stmt, struct cc_array_s *records)
 {
     nsh_image_entity_t *entity;
-    int ret;
+    enum cc_stat cc_stat;
 
-    entity = nsh_image_entity_load(stmt);
+    entity = nsh_images_repo_load_row(stmt);
     if (entity == NULL)
-        return NSH_DB_ITER_ERR;
+        goto error;
 
-    ret = cb(entity, data);
+    cc_stat = cc_array_add(records, entity);
+    if (cc_stat != CC_OK) {
+        fprintf(stderr, "[x] Failed to append image entity to query results\n");
+        goto error_free_clone;
+    }
+
+    return 0;
+
+error_free_clone:
     nsh_image_entity_free(entity);
+error:
+    return -1;
+}
 
+static int nsh_images_repo_all_internal(nsh_database_t *db, struct cc_array_s *records)
+{
+    sqlite3_stmt *stmt;
+    int err;
+    int retcode;
+    int ret = 0;
+
+    retcode = sqlite3_prepare_v2(db->conn, nsh_images_select_sql, -1, &stmt, NULL);
+    if (retcode != SQLITE_OK) {
+        fprintf(stderr,
+            "[x] Failed to prepare images query statement: %s\n",
+            sqlite3_errmsg(db->conn));
+        ret = -1;
+        goto out;
+    }
+
+    while ((retcode = sqlite3_step(stmt)) == SQLITE_ROW) {
+        err = nsh_images_repo_append_row(stmt, records);
+        if (err) {
+            ret = -1;
+            goto out_finalize_stmt;
+        }
+    }
+
+    if (retcode != SQLITE_DONE) {
+        fprintf(stderr,
+            "[x] Failed to perform images query: %s\n",
+            sqlite3_errmsg(db->conn));
+        ret = -1;
+        goto out_finalize_stmt;
+    }
+
+out_finalize_stmt:
+    sqlite3_finalize(stmt);
+out:
     return ret;
 }
 
-int nsh_images_repo_iter_by_name(
-    nsh_database_t *db, const char *name,
-    int (*cb)(nsh_image_entity_t *, void *), void *data)
+int nsh_images_repo_all(nsh_database_t *db, struct cc_array_s **out)
 {
+    struct cc_array_s *records;
+    enum cc_stat cc_stat;
+    int err;
+
+    cc_stat = cc_array_new(&records);
+    if (cc_stat != CC_OK) {
+        fprintf(stderr, "[x] Failed to allocate images query results array\n");
+        goto error;
+    }
+
+    err = nsh_images_repo_all_internal(db, records);
+    if (err)
+        goto error_destroy_records;
+
+    *out = records;
+    return 0;
+
+error_destroy_records:
+    cc_array_destroy_cb(records, (void (*)(void *))nsh_image_entity_free);
+error:
+    return -1;
+}
+
+int nsh_images_repo_first_by_name(nsh_database_t *db, const char *name, nsh_image_entity_t **out)
+{
+    nsh_image_entity_t *entity = NULL;
     sqlite3_stmt *stmt;
     int retcode;
     int ret = 0;
@@ -136,7 +160,7 @@ int nsh_images_repo_iter_by_name(
 
     if (retcode != SQLITE_OK) {
         fprintf(stderr,
-            "[x] Failed to prepare query statement: %s\n",
+            "[x] Failed to prepare images query statement: %s\n",
             sqlite3_errmsg(db->conn));
         ret = -1;
         goto out;
@@ -145,27 +169,49 @@ int nsh_images_repo_iter_by_name(
     sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
 
     while ((retcode = sqlite3_step(stmt)) == SQLITE_ROW) {
-        retcode = nsh_images_repo_iter_process(stmt, cb, data);
-        if (retcode == NSH_DB_ITER_ERR) {
+        entity = nsh_images_repo_load_row(stmt);
+        if (entity == NULL) {
             ret = -1;
             goto out_finalize_stmt;
         }
-        if (retcode == NSH_DB_ITER_STOP) {
-            retcode = SQLITE_DONE;
-            break;
-        }
+
+        retcode = SQLITE_DONE;
+        break;
     }
 
     if (retcode != SQLITE_DONE) {
-        fprintf(stderr, "[x] Failed to query images: %s\n", sqlite3_errmsg(db->conn));
+        fprintf(stderr,
+            "[x] Failed to perform images query: %s\n",
+            sqlite3_errmsg(db->conn));
         ret = -1;
         goto out_finalize_stmt;
     }
+
+    *out = entity;
 
 out_finalize_stmt:
     sqlite3_finalize(stmt);
 out:
     return ret;
+}
+
+int nsh_images_repo_exists_by_name(nsh_database_t *db, const char *name, bool *out)
+{
+    nsh_image_entity_t *entity;
+    int err;
+
+    err = nsh_images_repo_first_by_name(db, name, &entity);
+    if (err)
+        return -1;
+
+    if (entity != NULL) {
+        nsh_image_entity_free(entity);
+        *out = true;
+    }
+    else
+        *out = false;
+
+    return 0;
 }
 
 int nsh_images_repo_add(nsh_database_t *db, nsh_image_entity_t *entity)
@@ -201,54 +247,6 @@ out_finalize_stmt:
     sqlite3_finalize(stmt);
 out:
     return ret;
-}
-
-static int nsh_images_repo_exists_cb(nsh_image_entity_t *entity, void *exists)
-{
-    (void)entity;
-    *(bool *)exists = true;
-
-    return NSH_DB_ITER_STOP;
-}
-
-int nsh_images_repo_exists_by_name(nsh_database_t *db, const char *name, bool *out)
-{
-    bool exists = false;
-    int err;
-
-    err = nsh_images_repo_iter_by_name(db, name, nsh_images_repo_exists_cb, &exists);
-    if (err)
-        return -1;
-
-    *out = exists;
-    return 0;
-}
-
-static int nsh_images_repo_first_cb(nsh_image_entity_t *entity, void *out)
-{
-    nsh_image_entity_t *clone;
-
-    clone = nsh_image_entity_clone(entity);
-    if (clone == NULL)
-        return NSH_DB_ITER_ERR;
-
-    *(nsh_image_entity_t **)out = clone;
-
-    return NSH_DB_ITER_STOP;
-}
-
-int nsh_images_repo_first_by_name(nsh_database_t *db, const char *name, nsh_image_entity_t **out)
-{
-    nsh_image_entity_t *entity = NULL;
-    int err;
-
-    err = nsh_images_repo_iter_by_name(
-        db, name, nsh_images_repo_first_cb, &entity);
-    if (err)
-        return -1;
-
-    *out = entity;
-    return 0;
 }
 
 int nsh_images_repo_delete_by_id(nsh_database_t *db, uuid_t id)
