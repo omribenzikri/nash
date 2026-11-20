@@ -26,3 +26,4 @@ Linux container engine POC in the works.
 * `libarchive`
 * `libcollectc`
 * `libsqlite3`
+* `libsmartcols`

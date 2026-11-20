@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -c -Wall -Wextra -Werror -Wmissing-prototypes
 STATIC_LIBS = -locispec -lblake3
-DYNAMIC_LIBS = -luuid -lcap -ljson-c -lsodium -larchive -lcollectc -lsqlite3
+DYNAMIC_LIBS = -luuid -lcap -ljson-c -lsodium -larchive -lcollectc -lsqlite3 -lsmartcols
 INCLUDE_DIRS = -Isrc
 
 SOURCE_DIR = src

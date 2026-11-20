@@ -3,6 +3,8 @@
 #include <time.h>
 #include <linux/limits.h>
 #include <uuid/uuid.h>
+#include <collectc/cc_common.h>
+#include <collectc/cc_array.h>
 #include "common/constants.h"
 #include "engine/persistence/database.h"
 #include "engine/persistence/repos/images.h"
@@ -86,6 +88,31 @@ out_close_db:
 out:
     return ret;
 }
+
+int nsh_image_list(struct cc_array_s **out)
+{
+    nsh_database_t *db;
+    int err;
+    int ret = 0;
+
+    db = nsh_database_open();
+    if (db == NULL) {
+        ret = -1;
+        goto out;
+    }
+
+    err = nsh_images_repo_all(db, out);
+    if (err) {
+        ret = -1;
+        goto out_close_db;
+    }
+
+out_close_db:
+    nsh_database_close(db);
+out:
+    return ret;
+}
+
 
 int nsh_image_delete(const char *name)
 {
