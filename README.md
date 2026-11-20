@@ -11,9 +11,10 @@ Linux container engine POC in the works.
 5. Whitelisting capabilities
 
 ##### Engine
-1. Parsing OCI image metadata
+1. Parsing OCI image bundle metadata
 2. Unpacking layers in order, and applying whiteouts
-3. Merging layers via overlayfs mount
+3. Importing metadata and unpacked layers to a content-addressable store
+3. Merging layers via an overlayfs mount
 4. Applying image config + user overrides
 
 #### Dependencies
