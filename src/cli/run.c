@@ -5,7 +5,6 @@
 #include "common/utils/string.h"
 #include "engine/container/init.h"
 #include "engine/container/container.h"
-#include "daemon/container.h"
 #include "cli/run.h"
 
 #define NSH_OPT_RUN_ENV_MAX 1024
@@ -165,8 +164,8 @@ int nsh_cli_run_handle(int argc, char **argv)
         goto out;
     }
 
-    err = nsh_container_create(&params, &container);
-    if (err) {
+    container = nsh_container_create(&params);
+    if (container == NULL) {
         fprintf(stderr, "[x] Failed to create container, exiting\n");
         ret = -1;
         goto out;

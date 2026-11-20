@@ -31,6 +31,7 @@ static int nsh_container_init_internal(
     nsh_container_t *container, nsh_image_t *image,
     nsh_container_params_t *user_params)
 {
+    char workdir_path[PATH_MAX];
     char rootfs_path[PATH_MAX];
     nsh_container_config_t image_config;
     nsh_init_context_t ctx = {
@@ -43,16 +44,16 @@ static int nsh_container_init_internal(
     uuid_generate_random(container->id);
 
     nsh_resolve_container_workdir_path(container->id,
-        container->workdir_path, sizeof(container->workdir_path));
-    nsh_resolve_container_rootfs_path(container->workdir_path,
+        workdir_path, sizeof(workdir_path));
+    nsh_resolve_container_rootfs_path(workdir_path,
         rootfs_path, sizeof(rootfs_path));
 
-    err = mkdir(container->workdir_path, S_IRWXU);
+    err = mkdir(workdir_path, S_IRWXU);
     if (err)
         goto error;
 
     err = nsh_image_rootfs_prepare(
-        image, container->workdir_path, rootfs_path);
+        image, workdir_path, rootfs_path);
     if (err)
         goto error_delete_workdir;
 
@@ -67,7 +68,7 @@ static int nsh_container_init_internal(
 error_destroy_rootfs:
     nsh_image_rootfs_destroy(rootfs_path);
 error_delete_workdir:
-    rmdir_recursive(container->workdir_path);
+    rmdir_recursive(workdir_path);
 error:
     return -1;
 }
@@ -100,8 +101,13 @@ out:
 
 static void nsh_container_cleanup(nsh_container_t *container)
 {
+    char workdir_path[PATH_MAX];
+
+    nsh_resolve_container_workdir_path(container->id,
+        workdir_path, sizeof(workdir_path));
+
     nsh_image_rootfs_destroy(container->run_params.rootfs_path);
-    rmdir_recursive(container->workdir_path);
+    rmdir_recursive(workdir_path);
 }
 
 static void nsh_container_destroy(nsh_container_t *container)
@@ -109,7 +115,7 @@ static void nsh_container_destroy(nsh_container_t *container)
     nsh_run_params_destroy(&container->run_params);
 }
 
-nsh_container_t *nsh_engine_container_create(nsh_container_params_t *params)
+nsh_container_t *nsh_container_create(nsh_container_params_t *params)
 {
     nsh_container_t *container;
     int err;
@@ -139,13 +145,13 @@ error:
     return NULL;
 }
 
-void nsh_engine_container_delete(nsh_container_t *container)
+void nsh_container_delete(nsh_container_t *container)
 {
     nsh_run_cleanup(container->id);
     nsh_container_cleanup(container);
 }
 
-void nsh_engine_container_free(nsh_container_t *container)
+void nsh_container_free(nsh_container_t *container)
 {
     nsh_container_destroy(container);
     free(container);
