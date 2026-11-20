@@ -136,7 +136,7 @@ static int nsh_cli_run_parse_args(int argc, char **argv,
         return -1;
     }
 
-    params->image_path = argv[1];
+    params->image_name = argv[1];
     params->config.cmd = &argv[2];
     params->config.cmd_len = argc - 2;
 

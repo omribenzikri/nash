@@ -89,7 +89,7 @@ int nsh_oci_bundle_blob_path_resolve(
     return 0;
 }
 
-image_spec_schema_image_layout_schema *nsh_oci_bundle_layout_load(const char *bundle_path)
+static image_spec_schema_image_layout_schema *nsh_oci_bundle_layout_load(const char *bundle_path)
 {
     char path[PATH_MAX];
 
@@ -98,7 +98,7 @@ image_spec_schema_image_layout_schema *nsh_oci_bundle_layout_load(const char *bu
     return nsh_oci_layout_parse(path);
 }
 
-image_spec_schema_image_index_schema *nsh_oci_bundle_index_load(const char *bundle_path)
+static image_spec_schema_image_index_schema *nsh_oci_bundle_index_load(const char *bundle_path)
 {
     char path[PATH_MAX];
 
@@ -107,7 +107,7 @@ image_spec_schema_image_index_schema *nsh_oci_bundle_index_load(const char *bund
     return nsh_oci_index_parse(path);
 }
 
-image_spec_schema_image_manifest_schema *nsh_oci_bundle_manifest_load(
+static image_spec_schema_image_manifest_schema *nsh_oci_bundle_manifest_load(
     const char *bundle_path, const char *digest)
 {
     char path[PATH_MAX];
@@ -121,7 +121,7 @@ image_spec_schema_image_manifest_schema *nsh_oci_bundle_manifest_load(
     return nsh_oci_manifest_parse(path);
 }
 
-image_spec_schema_config_schema *nsh_oci_bundle_config_load(
+static image_spec_schema_config_schema *nsh_oci_bundle_config_load(
     const char *bundle_path, const char *digest)
 {
     char path[PATH_MAX];

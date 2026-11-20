@@ -10,7 +10,6 @@
 #include <linux/limits.h>
 #include <archive_entry.h>
 #include "common/utils/archive.h"
-#include "common/constants.h"
 #include "common/utils/filesystem.h"
 #include "engine/image/overlay.h"
 
@@ -67,100 +66,39 @@ int nsh_overlay_opaque_set(const char *path)
     return 0;
 }
 
-static inline void nsh_resolve_lowerdir_path(
-    const char *workspace_path, const char *layer_digest,
-    char *buf, size_t size)
+static int nsh_overlay_workspace_prepare(
+    const char *upper_path, const char *workdir_path)
 {
-    snprintf(buf, size, "%s/%s/%s",
-        workspace_path, NSH_FS_WORKDIR_OVERLAY_SNAPSHOTS,
-        layer_digest);
-}
-
-static inline void nsh_resolve_upperdir_path(
-    const char *workspace_path, char *buf, size_t size)
-{
-    snprintf(buf, size, "%s/%s",
-        workspace_path, NSH_FS_WORKDIR_OVERLAY_UPPER);
-}
-
-static inline void nsh_resolve_workdir_path(
-    const char *workspace_path, char *buf, size_t size)
-{
-    snprintf(buf, size, "%s/%s",
-        workspace_path, NSH_FS_WORKDIR_OVERLAY_WORKDIR);
-}
-
-static inline void nsh_resolve_rootfs_path(
-    const char *workspace_path, char *buf, size_t size)
-{
-    snprintf(buf, size, "%s/%s",
-        workspace_path, NSH_FS_WORKDIR_ROOTFS);
-}
-
-static int nsh_lowerdir_add(int fsfd,
-    const char *workspace_path, const char *layer_digest)
-{
-    char path[PATH_MAX];
     int err;
 
-    nsh_resolve_lowerdir_path(
-        workspace_path, layer_digest,
-        path, sizeof(path));
-
-    err = fsconfig(fsfd, FSCONFIG_SET_STRING, "lowerdir+", path, 0);
+    err = mkdir(upper_path, S_IRWXU);
     if (err) {
-        perror("[x] Failed to configure lowerdir");
+        perror("[x] Failed to create overlayfs upperdir");
+        return -1;
+    }
+
+    err = mkdir(workdir_path, S_IRWXU);
+    if (err) {
+        perror("[x] Failed to create overlayfs workdir");
         return -1;
     }
 
     return 0;
 }
 
-static int nsh_upperdir_set(int fsfd, const char *workspace_path)
-{
-    char path[PATH_MAX];
-    int err;
-
-    nsh_resolve_upperdir_path(workspace_path, path, sizeof(path));
-
-    err = fsconfig(fsfd, FSCONFIG_SET_STRING, "upperdir", path, 0);
-    if (err) {
-        perror("[x] Failed to configure upperdir");
-        return -1;
-    }
-
-    return 0;
-}
-
-static int nsh_workdir_set(int fsfd, const char *workspace_path)
-{
-    char path[PATH_MAX];
-    int err;
-
-    nsh_resolve_workdir_path(workspace_path, path, sizeof(path));
-
-    err = fsconfig(fsfd, FSCONFIG_SET_STRING, "workdir", path, 0);
-    if (err) {
-        perror("[x] Failed to configure workdir");
-        return -1;
-    }
-
-    return 0;
-}
-
-static int nsh_overlay_features_enable(int fsfd)
+static int nsh_overlay_config_features(int fsfd)
 {
     int err;
 
     err = fsconfig(fsfd, FSCONFIG_SET_STRING, "redirect_dir", "on", 0);
     if (err) {
-        perror("[x] Failed to configure \"redirect_dir\" feature");
+        perror("[x] Failed to configure overlayfs \"redirect_dir\" feature");
         return -1;
     }
 
     err = fsconfig(fsfd, FSCONFIG_SET_STRING, "index", "on", 0);
     if (err) {
-        perror("[x] Failed to configure \"index\" feature");
+        perror("[x] Failed to configure overlayfs \"index\" feature");
         return -1;
     }
 
@@ -168,26 +106,32 @@ static int nsh_overlay_features_enable(int fsfd)
 }
 
 static int nsh_overlay_config(int fsfd,
-    image_spec_schema_image_manifest_schema *manifest,
-    const char *workspace_path)
+    const char *upper_path, const char *workdir_path,
+    char **snapshots_paths, size_t snapshots_paths_len)
 {
     int err;
 
-    for (int i = manifest->layers_len - 1; i >= 0; i--) {
-        err = nsh_lowerdir_add(fsfd, workspace_path, manifest->layers[i]->digest);
-        if (err)
+    for (int i = snapshots_paths_len - 1; i >= 0; i--) {
+        err = fsconfig(fsfd, FSCONFIG_SET_STRING, "lowerdir+", snapshots_paths[i], 0);
+        if (err) {
+            perror("[x] Failed to configure overlayfs lowerdir");
             return -1;
+        }
     }
 
-    err = nsh_upperdir_set(fsfd, workspace_path);
-    if (err)
+    err = fsconfig(fsfd, FSCONFIG_SET_STRING, "upperdir", upper_path, 0);
+    if (err) {
+        perror("[x] Failed to configure overlayfs upperdir");
         return -1;
+    }
 
-    err = nsh_workdir_set(fsfd, workspace_path);
-    if (err)
+    err = fsconfig(fsfd, FSCONFIG_SET_STRING, "workdir", workdir_path, 0);
+    if (err) {
+        perror("[x] Failed to configure overlayfs workdir");
         return -1;
+    }
 
-    err = nsh_overlay_features_enable(fsfd);
+    err = nsh_overlay_config_features(fsfd);
     if (err)
         return -1;
 
@@ -231,13 +175,23 @@ out:
 }
 
 int nsh_overlay_create(
-    image_spec_schema_image_manifest_schema *manifest,
-    const char *workspace_path,
-    char *rootfs_path, size_t size)
+    const char *target, const char *workspace,
+    char **snapshots_paths, size_t snapshots_paths_len)
 {
+    char upper_path[PATH_MAX];
+    char workdir_path[PATH_MAX];
     int fsfd;
-    int ret = 0;
     int err;
+    int ret = 0;
+
+    snprintf(upper_path, sizeof(upper_path), "%s/upper", workspace);
+    snprintf(workdir_path, sizeof(workdir_path), "%s/workdir", workspace);
+
+    err = nsh_overlay_workspace_prepare(upper_path, workdir_path);
+    if (err) {
+        ret = -1;
+        goto out;
+    }
 
     fsfd = fsopen(OVERLAYFS_NAME, 0);
     if (fsfd == -1) {
@@ -246,26 +200,20 @@ int nsh_overlay_create(
         goto out;
     }
 
-    err = nsh_overlay_config(fsfd, manifest, workspace_path);
+    err = nsh_overlay_config(fsfd, upper_path, workdir_path, snapshots_paths, snapshots_paths_len);
     if (err) {
         ret = -1;
         goto out_close_fsfd;
     }
 
-    nsh_resolve_rootfs_path(workspace_path, rootfs_path, size);
-
-    err = nsh_overlay_mount(fsfd, rootfs_path);
+    err = nsh_overlay_mount(fsfd, target);
     if (err) {
         ret = -1;
         goto out_close_fsfd;
     }
 
 out_close_fsfd:
-    err = close(fsfd);
-    if (err) {
-        perror("[x] Failed to close filesystem context");
-        ret = -1;
-    }
+    close(fsfd);
 out:
     return ret;
 }

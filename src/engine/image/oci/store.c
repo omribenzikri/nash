@@ -2,7 +2,10 @@
 #include <linux/limits.h>
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
 #include <ocispec/image_spec_schema_config_schema.h>
+#include <stdlib.h>
+#include <string.h>
 #include "common/utils/filesystem.h"
+#include "common/utils/macros.h"
 #include "engine/image/oci/common.h"
 #include "engine/image/oci/parse.h"
 #include "engine/image/oci/store.h"
@@ -118,6 +121,47 @@ int nsh_oci_store_load_image_meta(
 
 error_free_manifest:
     free_image_spec_schema_image_manifest_schema(meta->manifest);
+error:
+    return -1;
+}
+
+int nsh_oci_store_snapshot_paths(
+    nsh_oci_image_meta_t *meta, const char *store_path, char ***outp, size_t *outl)
+{
+    ARRAY_WITH_LEN(char *, paths);
+    size_t nlayers = meta->manifest->layers_len;
+    char path[PATH_MAX];
+
+    paths_len = 0;
+    paths = calloc(nlayers, sizeof(*paths));
+    if (paths == NULL) {
+        perror("[x] Failed to allocate snapshots paths array");
+        goto error;
+    }
+
+    for (size_t i = 0; i < nlayers; i++) {
+        nsh_oci_store_snapshot_path_resolve(
+            store_path, meta->manifest->layers[i]->digest,
+            path, sizeof(path));
+
+        paths[i] = strndup(path, sizeof(path));
+        if (paths[i] == NULL) {
+            perror("[x] Failed to allocate snapshot path");
+            goto error_free_paths;
+        }
+        paths_len++;
+    }
+
+    assert(paths_len == nlayers);
+
+    *outp = paths;
+    *outl = paths_len;
+    return 0;
+
+error_free_paths:
+    while (paths_len > 0)
+        free(paths[--paths_len]);
+    free(paths);
 error:
     return -1;
 }

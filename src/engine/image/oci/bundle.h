@@ -12,13 +12,6 @@ image_spec_schema_image_index_schema_manifests_element
     *nsh_oci_find_compat_manifest_element(
         image_spec_schema_image_index_schema *index);
 
-image_spec_schema_image_layout_schema *nsh_oci_bundle_layout_load(const char *bundle_path);
-image_spec_schema_image_index_schema *nsh_oci_bundle_index_load(const char *bundle_path);
-image_spec_schema_image_manifest_schema *nsh_oci_bundle_manifest_load(
-    const char *bundle_path, const char *digest);
-image_spec_schema_config_schema *nsh_oci_bundle_config_load(
-    const char *bundle_path, const char *digest);
-
 int nsh_oci_bundle_blob_path_resolve(
     const char *bundle_path, const char *digest,
     char *buf, size_t size);

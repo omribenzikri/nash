@@ -1,11 +1,8 @@
-#ifndef _NASH_ENGINE_CONTAINER_CONFIG_CONFIG_H
-#define _NASH_ENGINE_CONTAINER_CONFIG_CONFIG_H
+#ifndef _NASH_ENGINE_COMMON_MODELS_H
+#define _NASH_ENGINE_COMMON_MODELS_H
 
 #include <stddef.h>
 #include "common/utils/macros.h"
-
-#define NSH_DEFAULT_WORKING_DIRECTORY "/"
-#define NSH_DEFAULT_USER "root"
 
 // Not all image config parameters are here,
 // just the ones that are currently supported.

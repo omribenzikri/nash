@@ -116,7 +116,7 @@ static int nsh_oci_unpack_whiteouts(nsh_oci_unpack_context_t *ctx)
         cc_array_get_at(ctx->whiteouts, i, (void **)&entry);
 
         whiteout_path = archive_entry_pathname(entry);
-        err = nsh_oci_whiteout_to_file_new(whiteout_path, file_path, sizeof(file_path));
+        err = nsh_oci_whiteout_to_file(whiteout_path, file_path, sizeof(file_path));
         if (err) {
             fprintf(stderr,
                 "[x] Failed to resolve file path of whiteout: %s\n", whiteout_path);
@@ -220,7 +220,7 @@ static int nsh_oci_handle_whiteout(
     const char *pathname = archive_entry_pathname(entry);
     enum cc_stat cc_stat;
 
-    if (!nsh_oci_is_valid_whiteout_new(pathname)) {
+    if (!nsh_oci_is_valid_whiteout(pathname)) {
         fprintf(stderr, "[x] Invalid whiteout: %s\n", pathname);
         return -1;
     }
@@ -262,10 +262,10 @@ static int nsh_oci_handle_entry(
     if (archive_entry_hardlink(entry)) {
         return nsh_oci_handle_hardlink(entry, ctx);
     }
-    if (nsh_oci_is_whiteout_new(pathname)) {
+    if (nsh_oci_is_whiteout(pathname)) {
         return nsh_oci_handle_whiteout(entry, ctx);
     }
-    if (nsh_oci_is_opaque_whiteout_new(pathname)) {
+    if (nsh_oci_is_opaque_whiteout(pathname)) {
         return nsh_oci_handle_opaque_whiteout(entry, ctx);
     }
 

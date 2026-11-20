@@ -18,9 +18,7 @@ int nsh_overlay_whiteout_create(const char *path);
 int nsh_overlay_opaque_set(const char *path);
 
 int nsh_overlay_create(
-    image_spec_schema_image_manifest_schema *manifest,
-    const char *workspace_path,
-    char *rootfs_path, size_t size
-);
+    const char *target, const char *workspace,
+    char **snapshots_paths, size_t snapshots_paths_len);
 
 #endif
