@@ -10,10 +10,13 @@
 #include "common/utils/macros.h"
 #include "runtime/creds.h"
 #include "runtime/runtime.h"
+#include "engine/common/container_config.h"
 #include "engine/container/config/env.h"
 #include "engine/container/config/creds.h"
-#include "engine/container/config/config.h"
 #include "engine/container/init.h"
+
+#define NSH_DEFAULT_WORKING_DIRECTORY "/"
+#define NSH_DEFAULT_USER "root"
 
 static int nsh_run_config_hostname_init(
     char **hostname, nsh_init_context_t *ctx)

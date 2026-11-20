@@ -2,17 +2,17 @@
 #define _NASH_ENGINE_CONTAINER_INIT_H
 
 #include "runtime/runtime.h"
-#include "engine/container/config/config.h"
+#include "engine/common/container_config.h"
 
 typedef struct {
-    char *image_path;
+    char *image_name;
     char *hostname;
     nsh_container_config_t config;
     nsh_resources_t resources;
 } nsh_container_params_t;
 
 typedef struct {
-    const char *rootfs_path;
+    char *rootfs_path;
     nsh_container_params_t *user_params;
     nsh_container_config_t *image_config;
 } nsh_init_context_t;

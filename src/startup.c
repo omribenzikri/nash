@@ -6,6 +6,7 @@
 #include <linux/magic.h>
 #include "common/utils/filesystem.h"
 #include "common/constants.h"
+#include "engine/startup.h"
 #include "startup.h"
 
 static int nsh_verify_cgroup_version(bool *out)
@@ -55,6 +56,12 @@ static int nsh_workdir_create()
         return -1;
     }
 
+    err = mkdir_if_missing(NSH_WORKDIR_IMAGES, S_IRWXU);
+    if (err) {
+        perror("[x] Failed to create " NSH_WORKDIR_IMAGES);
+        return -1;
+    }
+
     return 0;
 }
 
@@ -67,6 +74,12 @@ int nsh_startup()
     err = nsh_workdir_create();
     if (err)
         return -1;
+
+    err = nsh_engine_startup();
+    if (err) {
+        fprintf(stderr, "[x] Engine startup failed\n");
+        return -1;
+    }
 
     return 0;
 }

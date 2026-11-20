@@ -1,6 +1,5 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
 #include <stddef.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -8,41 +7,70 @@
 #include <sys/mount.h>
 #include <linux/limits.h>
 #include "common/constants.h"
-#include "engine/image/oci.h"
-#include "engine/image/layer.h"
+#include "common/entities/image.h"
+#include "common/utils/macros.h"
+#include "engine/common/container_config.h"
+#include "engine/persistence/database.h"
+#include "engine/persistence/repos/images.h"
+#include "engine/image/oci/common.h"
+#include "engine/image/oci/store.h"
+#include "engine/image/oci/config.h"
 #include "engine/image/overlay.h"
 #include "engine/image/image.h"
 
 struct nsh_image {
-    char *path;
-    oci_image_t oci;
+    nsh_image_entity_t *entity;
+    nsh_oci_image_meta_t oci_meta;
 };
 
-nsh_image_t *nsh_image_load(const char *path)
+static nsh_image_entity_t *nsh_image_load_entity(const char *name)
+{
+    nsh_database_t *db;
+    nsh_image_entity_t *entity = NULL;
+    int err;
+
+    db = nsh_database_open();
+    if (db == NULL)
+        goto out;
+
+    err = nsh_images_repo_first_by_name(db, name, &entity);
+    if (err)
+        goto out_close_db;
+    if (entity == NULL) {
+        fprintf(stderr, "[x] Failed to load image: %s: image does not exist\n", name);
+        goto out_close_db;
+    }
+
+out_close_db:
+    nsh_database_close(db);
+out:
+    return entity;
+}
+
+nsh_image_t *nsh_image_load(const char *name)
 {
     nsh_image_t *image;
     int err;
 
     image = malloc(sizeof(*image));
     if (image == NULL) {
-        fprintf(stderr, "[x] Failed to allocate image\n");
+        perror("[x] Failed to allocate image");
         goto error;
     }
 
-    image->path = strndup(path, PATH_MAX);
-    if (image->path == NULL) {
-        fprintf(stderr, "[x] Failed to duplicate image path\n");
+    image->entity = nsh_image_load_entity(name);
+    if (image->entity == NULL)
         goto error_free_image;
-    }
 
-    err = nsh_oci_image_load(&image->oci, path);
+    err = nsh_oci_store_load_image_meta(
+        &image->oci_meta, NSH_WORKDIR_IMAGES, image->entity->ref);
     if (err)
-        goto error_free_path;
+        goto error_free_entity;
 
     return image;
 
-error_free_path:
-    free(image->path);
+error_free_entity:
+    nsh_image_entity_free(image->entity);
 error_free_image:
     free(image);
 error:
@@ -51,75 +79,42 @@ error:
 
 void nsh_image_free(nsh_image_t *image)
 {
-    nsh_oci_image_free(&image->oci);
-    free(image->path);
+    nsh_oci_image_meta_destroy(&image->oci_meta);
+    nsh_image_entity_free(image->entity);
     free(image);
 }
 
-static int nsh_filesystem_workspace_create(int workdir_fd)
-{
-     const char *subdirs[] = {
-        NSH_FS_WORKDIR,
-        NSH_FS_WORKDIR_OVERLAY,
-        NSH_FS_WORKDIR_OVERLAY_SNAPSHOTS,
-        NSH_FS_WORKDIR_OVERLAY_UPPER,
-        NSH_FS_WORKDIR_OVERLAY_WORKDIR,
-        NSH_FS_WORKDIR_ROOTFS
-    };
-    const size_t subdirs_len = sizeof(subdirs) / sizeof(subdirs[0]);
-
-    int err;
-
-    for (size_t i = 0; i < subdirs_len; i++) {
-        err = mkdirat(workdir_fd, subdirs[i], S_IRWXU);
-        if (err) {
-            perror("[x] Failed to create directory in workdir");
-            return -1;
-        }
-    }
-
-    return 0;
-}
-
 int nsh_image_rootfs_prepare(
-    nsh_image_t *image, const char *workdir_path,
-    char *path, size_t size)
+    nsh_image_t *image, const char *workspace, const char *path)
 {
-    int workdir_fd;
-    int ret = 0;
+    ARRAY_WITH_LEN(char *, snapshot_paths);
     int err;
+    int ret = 0;
 
-    workdir_fd = open(workdir_path, O_RDONLY | O_DIRECTORY);
-    if (workdir_fd == -1) {
-        perror("[x] Failed to open container workdir");
+    err = mkdir(path, S_IRWXU);
+    if (err) {
+        perror("[x] Failed to create rootfs directory");
         ret = -1;
         goto out;
     }
 
-    err = nsh_filesystem_workspace_create(workdir_fd);
+    err = nsh_oci_store_snapshot_paths(
+        &image->oci_meta, NSH_WORKDIR_IMAGES,
+        &snapshot_paths, &snapshot_paths_len);
     if (err) {
         ret = -1;
-        goto out_close_workdir;
+        goto out;
     }
 
-    err = nsh_layers_extract(image->oci.manifest, image->path, workdir_fd);
+    err = nsh_overlay_create(path, workspace, snapshot_paths, snapshot_paths_len);
     if (err) {
+        fprintf(stderr, "[x] Failed to create rootfs overlay\n");
         ret = -1;
-        goto out_close_workdir;
+        goto out_free_paths;
     }
 
-    err = nsh_overlay_create(image->oci.manifest, workdir_path, path, size);
-    if (err) {
-        ret = -1;
-        goto out_close_workdir;
-    }
-
-out_close_workdir:
-    err = close(workdir_fd);
-    if (err) {
-        perror("[x] Failed to close container workdir");
-        ret = -1;
-    }
+out_free_paths:
+    ARRAY_FREE_DEEP(snapshot_paths);
 out:
     return ret;
 }
@@ -137,42 +132,7 @@ int nsh_image_rootfs_destroy(const char *path)
     return 0;
 }
 
-char *nsh_image_config_working_dir(nsh_image_t *image)
+void nsh_image_config_load(nsh_image_t *image, nsh_container_config_t *config)
 {
-    return image->oci.config->config->working_dir;
-}
-
-char *nsh_image_config_user(nsh_image_t *image)
-{
-    return image->oci.config->config->user;
-}
-
-char **nsh_image_config_entrypoint(nsh_image_t *image)
-{
-    return image->oci.config->config->entrypoint;
-}
-
-size_t nsh_image_config_entrypoint_len(nsh_image_t *image)
-{
-    return image->oci.config->config->entrypoint_len;
-}
-
-char **nsh_image_config_cmd(nsh_image_t *image)
-{
-    return image->oci.config->config->cmd;
-}
-
-size_t nsh_image_config_cmd_len(nsh_image_t *image)
-{
-    return image->oci.config->config->cmd_len;
-}
-
-char **nsh_image_config_env(nsh_image_t *image)
-{
-    return image->oci.config->config->env;
-}
-
-size_t nsh_image_config_env_len(nsh_image_t *image)
-{
-    return image->oci.config->config->env_len;
+    nsh_oci_config_load(&image->oci_meta, config);
 }

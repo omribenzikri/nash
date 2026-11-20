@@ -7,6 +7,8 @@
 int mkdir_if_missing(const char *path, mode_t mode);
 int rmdir_recursive(const char *path);
 
+int copy_file(const char *src, const char *dst);
+
 void split_path(const char *path,
     char *dir_buf, size_t dir_size,
     char *base_buf, size_t base_size);
