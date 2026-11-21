@@ -471,7 +471,11 @@ static int nsh_oci_image_export_blobs(nsh_oci_export_context_t *ctx)
     if (err)
         return -1;
 
-    err = nsh_oci_bundle_dump_image_meta(&ctx->meta, ctx->ref, ctx->bundle_path);
+    err = nsh_oci_bundle_dump_image_meta(&ctx->meta, ctx->bundle_path);
+    if (err)
+        return -1;
+
+    err = nsh_oci_bundle_seal(ctx->bundle_path, ctx->ref);
     if (err)
         return -1;
 

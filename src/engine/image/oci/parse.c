@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
 #include <linux/limits.h>
@@ -82,6 +83,13 @@ image_spec_schema_image_index_schema *nsh_oci_index_parse(const char *path)
         goto error;
     }
 
+    if (index->schema_version_present && index->schema_version != OCI_SCHEMA_VERSION) {
+        fprintf(stderr,
+            "[x] Invalid index schema version: %d\n",
+            index->schema_version);
+        goto error_free_index;
+    }
+
     for (size_t i = 0; i < index->manifests_len; i++) {
         if (strcmp(index->manifests[i]->media_type, OCI_MEDIA_TYPE_MANIFEST) != 0) {
             fprintf(stderr,
@@ -111,6 +119,13 @@ image_spec_schema_image_manifest_schema *
         goto error;
     }
 
+    if (manifest->schema_version_present && manifest->schema_version != OCI_SCHEMA_VERSION) {
+        fprintf(stderr,
+            "[x] Invalid manifest schema version: %d\n",
+            manifest->schema_version);
+        goto error_free_manifest;
+    }
+
     if (strcmp(manifest->config->media_type, OCI_MEDIA_TYPE_CONFIG) != 0) {
         fprintf(stderr,
             "[x] Invalid config media type: %s\n",
@@ -138,6 +153,138 @@ image_spec_schema_config_schema *nsh_oci_config_parse(const char *path)
     }
 
     return config;
+}
+
+static int nsh_oci_flush_basic(const char *path, char *serialized)
+{
+    FILE *stream;
+    ssize_t nwritten;
+    int ret = 0;
+
+    stream = fopen(path, "w");
+    if (stream == NULL) {
+        perror("[x] Failed to open file stream");
+        ret = -1;
+        goto out;
+    }
+
+    nwritten = fwrite(serialized, strlen(serialized), 1, stream);
+    if (nwritten == -1) {
+        perror("[x] Failed to write to file stream");
+        ret = -1;
+        goto out_close_stream;
+    }
+
+out_close_stream:
+    fclose(stream);
+out:
+    return ret;
+}
+
+static char *nsh_oci_layout_serialize()
+{
+    image_spec_schema_image_layout_schema layout;
+    char *serialized;
+    parser_error err;
+
+    memset(&layout, 0, sizeof(layout));
+    layout.image_layout_version = NSH_OCI_SUPPORTED_IMAGE_LAYOUT_VERSION;
+
+    serialized = image_spec_schema_image_layout_schema_generate_json(&layout, NULL, &err);
+    if (serialized == NULL) {
+        fprintf(stderr, "[x] Failed to serialize image layout: %s\n", err);
+        return NULL;
+    }
+
+    return serialized;
+}
+
+int nsh_oci_layout_dump(const char *path)
+{
+    char *serialized;
+    int err;
+    int ret = 0;
+
+    serialized = nsh_oci_layout_serialize();
+    if (serialized == NULL) {
+        ret = -1;
+        goto out;
+    }
+
+    err = nsh_oci_flush_basic(path, serialized);
+    if (err) {
+        ret = -1;
+        goto out_free_serialized;
+    }
+
+out_free_serialized:
+    free(serialized);
+out:
+    return ret;
+}
+
+static char *nsh_oci_index_serialize(const char *manifest_digest, size_t manifest_size)
+{
+    image_spec_schema_image_index_schema index;
+    image_spec_schema_image_index_schema_manifests_element manifests_element;
+    image_spec_schema_image_index_schema_manifests_element *manifests;
+    size_t manifests_len;
+    char manifests_element_digest[NAME_MAX];
+    char *serialized;
+    parser_error err;
+
+    snprintf(
+        manifests_element_digest, sizeof(manifests_element_digest),
+        "%s", manifest_digest);
+
+    memset(&index, 0, sizeof(index));
+    memset(&manifests_element, 0, sizeof(manifests_element));
+
+    manifests_element.media_type = OCI_MEDIA_TYPE_MANIFEST;
+    manifests_element.digest = manifests_element_digest;
+    manifests_element.size = manifest_size;
+    manifests_element.size_present = true;
+
+    manifests = &manifests_element;
+    manifests_len = 1;
+
+    index.schema_version = OCI_SCHEMA_VERSION;
+    index.schema_version_present = true;
+    index.manifests = &manifests;
+    index.manifests_len = manifests_len;
+
+    serialized = image_spec_schema_image_index_schema_generate_json(&index, NULL, &err);
+    if (serialized == NULL) {
+        fprintf(stderr, "[x] Failed to serialize image index: %s\n", err);
+        return NULL;
+    }
+
+    return serialized;
+}
+
+int nsh_oci_index_dump(const char *path,
+    const char *manifest_digest, size_t manifest_size)
+{
+    char *serialized;
+    int err;
+    int ret = 0;
+
+    serialized = nsh_oci_index_serialize(manifest_digest, manifest_size);
+    if (serialized == NULL) {
+        ret = -1;
+        goto out;
+    }
+
+    err = nsh_oci_flush_basic(path, serialized);
+    if (err) {
+        ret = -1;
+        goto out_free_serialized;
+    }
+
+out_free_serialized:
+    free(serialized);
+out:
+    return ret;
 }
 
 int nsh_oci_layer_archive_format(const char *media_type)

@@ -73,6 +73,18 @@ static image_spec_schema_image_index_schema_manifests_element
     return NULL;
 }
 
+static inline void nsh_oci_bundle_layout_path_resolve(
+    const char *bundle_path, char *buf, size_t size)
+{
+    snprintf(buf, size, "%s/oci-layout", bundle_path);
+}
+
+static inline void nsh_oci_bundle_index_path_resolve(
+    const char *bundle_path, char *buf, size_t size)
+{
+    snprintf(buf, size, "%s/index.json", bundle_path);
+}
+
 static inline void nsh_oci_bundle_blobs_dir_path_resolve(
     const char *bundle_path, char *buf, size_t size)
 {
@@ -99,37 +111,11 @@ int nsh_oci_bundle_blob_path_resolve(
     return 0;
 }
 
-int nsh_oci_bundle_create(const char *bundle_path)
-{
-    char blobs_path[PATH_MAX];
-    int err;
-
-    // TEMP
-    rmdir_recursive(bundle_path);
-
-    nsh_oci_bundle_blobs_dir_path_resolve(
-        bundle_path, blobs_path, sizeof(blobs_path));
-
-    err = mkdir(bundle_path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
-    if (err) {
-        perror("[x] Failed to create target bundle directory");
-        return -1;
-    }
-
-    err = mkdir(blobs_path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
-    if (err) {
-        perror("[x] Failed to create target blobs directory");
-        return -1;
-    }
-
-    return 0;
-}
-
 static image_spec_schema_image_layout_schema *nsh_oci_bundle_layout_load(const char *bundle_path)
 {
     char path[PATH_MAX];
 
-    snprintf(path, sizeof(path), "%s/%s", bundle_path, "oci-layout");
+    nsh_oci_bundle_layout_path_resolve(bundle_path, path, sizeof(path));
 
     return nsh_oci_layout_parse(path);
 }
@@ -138,7 +124,7 @@ static image_spec_schema_image_index_schema *nsh_oci_bundle_index_load(const cha
 {
     char path[PATH_MAX];
 
-    snprintf(path, sizeof(path), "%s/%s", bundle_path, "index.json");
+    nsh_oci_bundle_index_path_resolve(bundle_path, path, sizeof(path));
 
     return nsh_oci_index_parse(path);
 }
@@ -238,10 +224,74 @@ out:
     return ret;
 }
 
-int nsh_oci_bundle_dump_image_meta(nsh_oci_image_meta_t *meta,
-    const char *ref, const char *bundle_path)
+static int nsh_oci_bundle_layout_dump(const char *bundle_path)
 {
-    (void)ref;
+    char path[PATH_MAX];
+
+    nsh_oci_bundle_layout_path_resolve(bundle_path, path, sizeof(path));
+
+    return nsh_oci_layout_dump(path);
+}
+
+static int nsh_oci_bundle_index_dump(const char *bundle_path,
+    const char *manifest_digest, size_t manifest_size)
+{
+    char path[PATH_MAX];
+
+    nsh_oci_bundle_index_path_resolve(bundle_path, path, sizeof(path));
+
+    return nsh_oci_index_dump(path, manifest_digest, manifest_size);
+}
+
+int nsh_oci_bundle_create(const char *bundle_path)
+{
+    char blobs_path[PATH_MAX];
+    int err;
+
+    // TEMP
+    rmdir_recursive(bundle_path);
+
+    nsh_oci_bundle_blobs_dir_path_resolve(
+        bundle_path, blobs_path, sizeof(blobs_path));
+
+    err = mkdir(bundle_path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+    if (err) {
+        perror("[x] Failed to create target bundle directory");
+        return -1;
+    }
+
+    err = mkdir(blobs_path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+    if (err) {
+        perror("[x] Failed to create target blobs directory");
+        return -1;
+    }
+
+    return 0;
+}
+
+int nsh_oci_bundle_seal(const char *bundle_path, const char *ref)
+{
+    const char *manifest_digest;
+    size_t manifest_size;
+    int err;
+
+    manifest_digest = ref;
+    manifest_size = 0; // TODO
+
+    err = nsh_oci_bundle_index_dump(bundle_path, manifest_digest, manifest_size);
+    if (err)
+        return -1;
+
+    err = nsh_oci_bundle_layout_dump(bundle_path);
+    if (err)
+        return -1;
+
+    return 0;
+}
+
+int nsh_oci_bundle_dump_image_meta(
+    nsh_oci_image_meta_t *meta, const char *bundle_path)
+{
     (void)bundle_path;
     (void)meta;
 

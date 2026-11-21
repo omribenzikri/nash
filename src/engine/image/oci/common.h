@@ -4,6 +4,8 @@
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
 #include <ocispec/image_spec_schema_config_schema.h>
 
+#define OCI_SCHEMA_VERSION 2
+
 #define OCI_MEDIA_TYPE_MANIFEST "application/vnd.oci.image.manifest.v1+json"
 #define OCI_MEDIA_TYPE_CONFIG "application/vnd.oci.image.config.v1+json"
 #define OCI_MEDIA_TYPE_TAR "application/vnd.oci.image.layer.v1.tar"
