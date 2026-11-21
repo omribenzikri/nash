@@ -2,12 +2,13 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <linux/limits.h>
 #include <ocispec/image_spec_schema_image_layout_schema.h>
 #include <ocispec/image_spec_schema_image_index_schema.h>
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
 #include <ocispec/image_spec_schema_config_schema.h>
-#include <string.h>
+#include "common/utils/filesystem.h"
 #include "engine/image/oci/common.h"
 #include "engine/image/oci/parse.h"
 #include "engine/image/oci/bundle.h"
@@ -53,7 +54,7 @@ static bool nsh_oci_is_compat_platform(
            strcmp(platform->os, os) == 0;
 }
 
-image_spec_schema_image_index_schema_manifests_element
+static image_spec_schema_image_index_schema_manifests_element
     *nsh_oci_find_compat_manifest_element(
         image_spec_schema_image_index_schema *index)
 {
@@ -72,19 +73,54 @@ image_spec_schema_image_index_schema_manifests_element
     return NULL;
 }
 
+static inline void nsh_oci_bundle_blobs_dir_path_resolve(
+    const char *bundle_path, char *buf, size_t size)
+{
+    snprintf(buf, size, "%s/blobs", bundle_path);
+}
+
 int nsh_oci_bundle_blob_path_resolve(
     const char *bundle_path, const char *digest,
     char *buf, size_t size)
 {
+    char base_path[PATH_MAX];
     char alg[NAME_MAX + 1];
     char encoded[NAME_MAX + 1];
     int err;
+
+    nsh_oci_bundle_blobs_dir_path_resolve(bundle_path, base_path, sizeof(base_path));
 
     err = nsh_oci_digest_parse(digest, alg, sizeof(alg), encoded, sizeof(encoded));
     if (err)
         return -1;
 
-    snprintf(buf, size, "%s/blobs/%s/%s", bundle_path, alg, encoded);
+    snprintf(buf, size, "%s/%s/%s", base_path, alg, encoded);
+
+    return 0;
+}
+
+int nsh_oci_bundle_create(const char *bundle_path)
+{
+    char blobs_path[PATH_MAX];
+    int err;
+
+    // TEMP
+    rmdir_recursive(bundle_path);
+
+    nsh_oci_bundle_blobs_dir_path_resolve(
+        bundle_path, blobs_path, sizeof(blobs_path));
+
+    err = mkdir(bundle_path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+    if (err) {
+        perror("[x] Failed to create target bundle directory");
+        return -1;
+    }
+
+    err = mkdir(blobs_path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+    if (err) {
+        perror("[x] Failed to create target blobs directory");
+        return -1;
+    }
 
     return 0;
 }
@@ -200,4 +236,14 @@ out_free_layout:
     free_image_spec_schema_image_layout_schema(layout);
 out:
     return ret;
+}
+
+int nsh_oci_bundle_dump_image_meta(nsh_oci_image_meta_t *meta,
+    const char *ref, const char *bundle_path)
+{
+    (void)ref;
+    (void)bundle_path;
+    (void)meta;
+
+    return 0;
 }

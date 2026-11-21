@@ -5,6 +5,7 @@
 #include <collectc/cc_array.h>
 
 int nsh_image_import(const char *path, const char *name);
+int nsh_image_export(const char *path, const char *name);
 int nsh_image_list(struct cc_array_s **out);
 int nsh_image_delete(const char *name);
 

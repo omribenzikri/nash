@@ -45,6 +45,13 @@ typedef struct {
     struct cc_array_s *imported;
 } nsh_oci_import_context_t;
 
+typedef struct {
+    const char *store_path;
+    const char *bundle_path;
+    const char *ref;
+    nsh_oci_image_meta_t meta;
+} nsh_oci_export_context_t;
+
 static int nsh_oci_import_context_init(nsh_oci_import_context_t *ctx,
     const char *store_path, const char *bundle_path, nsh_oci_image_desc_t *desc)
 {
@@ -86,6 +93,28 @@ static void nsh_oci_import_context_destroy(nsh_oci_import_context_t *ctx)
     nsh_oci_image_meta_destroy(&ctx->meta);
     nsh_database_close(ctx->db);
     cc_array_destroy_cb(ctx->imported, free);
+}
+
+static int nsh_oci_export_context_init(nsh_oci_export_context_t *ctx,
+    const char *store_path, const char *ref, const char *bundle_path)
+{
+    int err;
+
+    memset(ctx, 0, sizeof(*ctx));
+    ctx->store_path = store_path;
+    ctx->bundle_path = bundle_path;
+    ctx->ref = ref;
+
+    err = nsh_oci_store_load_image_meta(&ctx->meta, store_path, ref);
+    if (err)
+        return -1;
+
+    return 0;
+}
+
+static void nsh_oci_export_context_destroy(nsh_oci_export_context_t *ctx)
+{
+    nsh_oci_image_meta_destroy(&ctx->meta);
 }
 
 static int64_t nsh_oci_image_size_calc(struct cc_array_s *blobs)
@@ -430,6 +459,42 @@ int nsh_oci_image_import(
 
 out_destroy_ctx:
     nsh_oci_import_context_destroy(&ctx);
+out:
+    return ret;
+}
+
+static int nsh_oci_image_export_blobs(nsh_oci_export_context_t *ctx)
+{
+    int err;
+
+    err = nsh_oci_bundle_create(ctx->bundle_path);
+    if (err)
+        return -1;
+
+    err = nsh_oci_bundle_dump_image_meta(&ctx->meta, ctx->ref, ctx->bundle_path);
+    if (err)
+        return -1;
+
+    return 0;
+}
+
+int nsh_oci_image_export(
+    const char *store_path, const char *ref, const char *bundle_path)
+{
+    nsh_oci_export_context_t ctx;
+    int err;
+    int ret = 0;
+
+    err = nsh_oci_export_context_init(&ctx, store_path, ref, bundle_path);
+    if (err)
+        goto out;
+
+    err = nsh_oci_image_export_blobs(&ctx);
+    if (err)
+        goto out_destroy_ctx;
+
+out_destroy_ctx:
+    nsh_oci_export_context_destroy(&ctx);
 out:
     return ret;
 }

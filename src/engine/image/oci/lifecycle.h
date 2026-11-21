@@ -13,6 +13,10 @@ int nsh_oci_image_import(
     const char *store_path, const char *bundle_path,
     nsh_oci_image_desc_t *desc);
 
+int nsh_oci_image_export(
+    const char *store_path, const char *ref,
+    const char *bundle_path);
+
 int nsh_oci_image_delete(const char *store_path, const char *ref);
 
 #endif

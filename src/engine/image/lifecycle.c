@@ -5,6 +5,7 @@
 #include <collectc/cc_common.h>
 #include <collectc/cc_array.h>
 #include "common/constants.h"
+#include "common/entities/image.h"
 #include "engine/persistence/database.h"
 #include "engine/persistence/repos/images.h"
 #include "engine/image/oci/lifecycle.h"
@@ -73,6 +74,44 @@ int nsh_image_import(const char *path, const char *name)
         goto out_close_db;
     }
 
+out_close_db:
+    nsh_database_close(db);
+out:
+    return ret;
+}
+
+int nsh_image_export(const char *path, const char *name)
+{
+    nsh_database_t *db;
+    nsh_image_entity_t *entity;
+    int err;
+    int ret = 0;
+
+    db = nsh_database_open();
+    if (db == NULL) {
+        ret = -1;
+        goto out;
+    }
+
+    err = nsh_images_repo_first_by_name(db, name, &entity);
+    if (err) {
+        ret = -1;
+        goto out;
+    }
+    if (entity == NULL) {
+        fprintf(stderr, "[x] Failed to export image: %s: image does not exist\n", name);
+        ret = -1;
+        goto out_close_db;
+    }
+
+    err = nsh_oci_image_export(NSH_WORKDIR_IMAGES, entity->ref, path);
+    if (err) {
+        ret = -1;
+        goto out_free_entity;
+    }
+
+out_free_entity:
+    nsh_image_entity_free(entity);
 out_close_db:
     nsh_database_close(db);
 out:
