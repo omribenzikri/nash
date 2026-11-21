@@ -17,6 +17,6 @@ int nsh_oci_bundle_blob_path_resolve(
     char *buf, size_t size);
 
 int nsh_oci_bundle_load_image_meta(nsh_oci_image_meta_t *meta,
-    const char *bundle_path, char **out);
+    const char *bundle_path, char *outb, size_t outl);
 
 #endif

@@ -4,8 +4,10 @@
 #include <uuid/uuid.h>
 #include <libsmartcols/libsmartcols.h>
 #include <collectc/cc_array.h>
+#include "common/utils/string.h"
 #include "common/entities/image.h"
 #include "engine/image/lifecycle.h"
+#include "cli/common/constants.h"
 #include "cli/lsi.h"
 
 static void nsh_cli_images_table_append_row(
@@ -14,17 +16,20 @@ static void nsh_cli_images_table_append_row(
     struct libscols_line *line;
     struct tm *tm;
     char id[UUID_STR_LEN];
+    char size[64];
     char created_at[64];
 
     line = scols_table_new_line(table, NULL);
     tm = localtime(&entity->created_at);
 
     uuid_unparse_lower(entity->id, id);
-    strftime(created_at, sizeof(created_at), "%Y-%m-%d %H:%M:%S", tm);
+    str_format_bytes(entity->size, size, sizeof(size));
+    strftime(created_at, sizeof(created_at), NSH_CLI_TIME_FMT, tm);
 
     scols_line_set_data(line, 0, id);
     scols_line_set_data(line, 1, entity->name);
-    scols_line_set_data(line, 2, created_at);
+    scols_line_set_data(line, 2, size);
+    scols_line_set_data(line, 3, created_at);
 }
 
 static void nsh_cli_images_table_print(struct cc_array_s *entities)
@@ -36,6 +41,7 @@ static void nsh_cli_images_table_print(struct cc_array_s *entities)
     scols_table_set_column_separator(table, "   ");
     scols_table_new_column(table, "ID", 0, 0);
     scols_table_new_column(table, "NAME", 0, 0);
+    scols_table_new_column(table, "SIZE", 0, 0);
     scols_table_new_column(table, "CREATED AT", 0, 0);
 
     for (size_t i = 0; i < cc_array_size(entities); i++) {

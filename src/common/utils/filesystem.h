@@ -1,13 +1,15 @@
 #ifndef _NASH_COMMON_UTILS_FILESYSTEM_H
 #define _NASH_COMMON_UTILS_FILESYSTEM_H
 
+#include <stdint.h>
 #include <stddef.h>
 #include <sys/stat.h>
 
 int mkdir_if_missing(const char *path, mode_t mode);
 int rmdir_recursive(const char *path);
 
-int copy_file(const char *src, const char *dst);
+int file_copy(const char *src, const char *dst);
+int64_t file_size(const char *path);
 
 void split_path(const char *path,
     char *dir_buf, size_t dir_size,

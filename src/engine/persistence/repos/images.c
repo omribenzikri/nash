@@ -12,23 +12,24 @@
 static const char *nsh_images_create_table_sql =
     "CREATE TABLE IF NOT EXISTS images ("
     "   id " NSH_UUID_TYPE " PRIMARY KEY,"
-    "   name TEXT NOT NULL UNIQUE,"
-    "   ref TEXT NOT NULL,"
-    "   created_at INTEGER NOT NULL"
+    "   name TEXT NOT NULL UNIQUE CHECK(length(name) > 0),"
+    "   ref TEXT NOT NULL CHECK(length(ref) > 0),"
+    "   size INTEGER NOT NULL CHECK(size >= 0),"
+    "   created_at INTEGER NOT NULL CHECK(created_at > 0)"
     ");";
 
 static const char *nsh_images_select_sql =
-    "SELECT id, name, ref, created_at "
+    "SELECT id, name, ref, size, created_at "
     "FROM images;";
 
 static const char *nsh_images_select_by_name_sql =
-    "SELECT id, name, ref, created_at "
+    "SELECT id, name, ref, size, created_at "
     "FROM images "
     "WHERE name = ?;";
 
 static const char *nsh_images_insert_sql =
-    "INSERT INTO images (id, name, ref, created_at) "
-    "VALUES (?, ?, ?, ?);";
+    "INSERT INTO images (id, name, ref, size, created_at) "
+    "VALUES (?, ?, ?, ?, ?);";
 
 static const char *nsh_images_delete_by_id_sql =
     "DELETE FROM images "
@@ -57,9 +58,10 @@ static nsh_image_entity_t *nsh_images_repo_load_row(sqlite3_stmt *stmt)
     const unsigned char *id = nsh_column_uuid(stmt, 0);
     const char *name = (const char *)sqlite3_column_text(stmt, 1);
     const char *ref = (const char *)sqlite3_column_text(stmt, 2);
-    const time_t created_at = sqlite3_column_int64(stmt, 3);
+    const int64_t size = sqlite3_column_int64(stmt, 3);
+    const time_t created_at = sqlite3_column_int64(stmt, 4);
 
-    return nsh_image_entity_new(id, name, ref, created_at);
+    return nsh_image_entity_new(id, name, ref, size, created_at);
 }
 
 static int nsh_images_repo_append_row(sqlite3_stmt *stmt, struct cc_array_s *records)
@@ -234,7 +236,8 @@ int nsh_images_repo_add(nsh_database_t *db, nsh_image_entity_t *entity)
     nsh_bind_uuid(stmt, 1, entity->id, sizeof(entity->id), SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, entity->name, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 3, entity->ref, -1, SQLITE_STATIC);
-    sqlite3_bind_int64(stmt, 4, entity->created_at);
+    sqlite3_bind_int64(stmt, 4, entity->size);
+    sqlite3_bind_int64(stmt, 5, entity->created_at);
 
     retcode = sqlite3_step(stmt);
     if (retcode != SQLITE_DONE) {

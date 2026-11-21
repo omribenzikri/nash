@@ -64,25 +64,6 @@ inline void nsh_oci_store_snapshot_path_resolve(
         store_path, NSH_OCI_STORE_SNAPSHOTS_REPO, digest);
 }
 
-void nsh_oci_store_blob_path_resolve(
-    const char *store_path, const char *digest,
-    nsh_oci_blob_type_t type, char *buf, size_t size)
-{
-    switch (type) {
-        case NSH_OCI_BLOB_MANIFEST:
-            return nsh_oci_store_manifest_path_resolve(
-                store_path, digest, buf, size);
-        case NSH_OCI_BLOB_CONFIG:
-            return nsh_oci_store_config_path_resolve(
-                store_path, digest, buf, size);
-        case NSH_OCI_BLOB_LAYER:
-            return nsh_oci_store_snapshot_path_resolve(
-                store_path, digest, buf, size);
-        default:
-            assert(false && "Unhandled blob type");
-    }
-}
-
 static image_spec_schema_image_manifest_schema *nsh_oci_store_manifest_load(
     const char *store_path, const char *digest)
 {

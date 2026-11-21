@@ -22,12 +22,6 @@ typedef struct {
     image_spec_schema_config_schema *config;
 } nsh_oci_image_meta_t;
 
-typedef enum {
-    NSH_OCI_BLOB_MANIFEST,
-    NSH_OCI_BLOB_CONFIG,
-    NSH_OCI_BLOB_LAYER
-} nsh_oci_blob_type_t;
-
 void nsh_oci_image_meta_destroy(nsh_oci_image_meta_t *meta);
 
 #endif

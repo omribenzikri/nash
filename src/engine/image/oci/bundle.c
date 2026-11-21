@@ -136,7 +136,8 @@ static image_spec_schema_config_schema *nsh_oci_bundle_config_load(
 }
 
 static int nsh_oci_bundle_load_image_meta_internal(nsh_oci_image_meta_t *meta,
-    const char *bundle_path, image_spec_schema_image_index_schema *index, char **out)
+    const char *bundle_path, image_spec_schema_image_index_schema *index,
+    char *outb, size_t outl)
 {
     image_spec_schema_image_index_schema_manifests_element *manifest_element;
 
@@ -156,16 +157,10 @@ static int nsh_oci_bundle_load_image_meta_internal(nsh_oci_image_meta_t *meta,
     if (meta->config == NULL)
         goto error_free_manifest;
 
-    *out = strndup(manifest_element->digest, NAME_MAX);
-    if (*out == NULL) {
-        perror("[x] Failed to allocate image manifest reference");
-        goto error_free_config;
-    }
+    snprintf(outb, outl, "%s", manifest_element->digest);
 
     return 0;
 
-error_free_config:
-    free_image_spec_schema_config_schema(meta->config);
 error_free_manifest:
     free_image_spec_schema_image_manifest_schema(meta->manifest);
 error:
@@ -173,7 +168,7 @@ error:
 }
 
 int nsh_oci_bundle_load_image_meta(nsh_oci_image_meta_t *meta,
-    const char *bundle_path, char **out)
+    const char *bundle_path, char *outb, size_t outl)
 {
     image_spec_schema_image_layout_schema *layout;
     image_spec_schema_image_index_schema *index;
@@ -192,7 +187,8 @@ int nsh_oci_bundle_load_image_meta(nsh_oci_image_meta_t *meta,
         goto out_free_layout;
     }
 
-    err = nsh_oci_bundle_load_image_meta_internal(meta, bundle_path, index, out);
+    err = nsh_oci_bundle_load_image_meta_internal(
+        meta, bundle_path, index, outb, outl);
     if (err) {
         ret = -1;
         goto out_free_index;

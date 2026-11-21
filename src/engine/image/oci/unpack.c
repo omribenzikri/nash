@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -23,6 +24,7 @@ typedef struct {
     struct cc_array_s *hardlinks;
     struct cc_array_s *whiteouts;
     struct cc_array_s *opaque_whiteouts;
+    int64_t size;
 } nsh_oci_unpack_context_t;
 
 static int nsh_oci_unpack_context_init(nsh_oci_unpack_context_t *ctx,
@@ -32,6 +34,7 @@ static int nsh_oci_unpack_context_init(nsh_oci_unpack_context_t *ctx,
 
     ctx->reader = reader;
     ctx->writer = writer;
+    ctx->size = 0;
 
     cc_stat = cc_array_new(&ctx->hardlinks);
     if (cc_stat != CC_OK) {
@@ -279,6 +282,9 @@ static int nsh_oci_unpack_entries(nsh_oci_unpack_context_t *ctx)
     int retcode;
 
     while ((retcode = archive_read_next_header(ctx->reader, &entry)) == ARCHIVE_OK) {
+        if (archive_entry_size_is_set(entry))
+            ctx->size += archive_entry_size(entry);
+
         err = nsh_oci_handle_entry(entry, ctx);
         if (err)
             return -1;
@@ -300,11 +306,11 @@ static int nsh_oci_unpack_entries(nsh_oci_unpack_context_t *ctx)
     return 0;
 }
 
-static int nsh_oci_unpack_internal(struct archive *reader, struct archive *writer)
+static int64_t nsh_oci_unpack_internal(struct archive *reader, struct archive *writer)
 {
     nsh_oci_unpack_context_t ctx;
     int err;
-    int ret = 0;
+    int ret;
 
     err = nsh_oci_unpack_context_init(&ctx, reader, writer);
     if (err) {
@@ -336,19 +342,20 @@ static int nsh_oci_unpack_internal(struct archive *reader, struct archive *write
         goto out_destroy_context;
     }
 
+    ret = ctx.size;
+
 out_destroy_context:
     nsh_oci_unpack_context_destroy(&ctx);
 out:
     return ret;
 }
 
-static int nsh_oci_unpack_archive(int fd, int format, int filter)
+static int64_t nsh_oci_unpack_archive(int fd, int format, int filter)
 {
     struct archive *reader;
     struct archive *writer;
+    int64_t size;
     int retcode;
-    int err;
-    int ret = 0;
 
     reader = archive_read_new();
     writer = archive_write_disk_new();
@@ -371,72 +378,68 @@ static int nsh_oci_unpack_archive(int fd, int format, int filter)
     if (retcode != ARCHIVE_OK) {
         fprintf(stderr, "[x] Failed open archive reader: %s\n",
                 archive_error_string(reader));
-        ret = -1;
+        size = -1;
         goto out;
     }
 
-    err = nsh_oci_unpack_internal(reader, writer);
-    if (err) {
-        ret = -1;
+    size = nsh_oci_unpack_internal(reader, writer);
+    if (size == -1)
         goto out;
-    }
 
 out:
     archive_write_free(writer);
     archive_read_free(reader);
-    return ret;
+    return size;
 }
 
-int nsh_oci_layer_unpack(const char *path, const char *target, int format, int filter)
+int64_t nsh_oci_layer_unpack(const char *path, const char *target, int format, int filter)
 {
     char *cwd;
+    int64_t size;
     int fd;
     int err;
-    int ret = 0;
 
     fd = open(path, O_RDONLY);
     if (fd == -1) {
         perror("[x] Failed to open layer archive");
-        ret = -1;
+        size = -1;
         goto out;
     }
 
     err = mkdir(target, S_IRWXU);
     if (err) {
         perror("[x] Failed to create unpack target directory");
-        ret = -1;
+        size = -1;
         goto out_close_layer;
     }
 
     cwd = getcwd(NULL, 0);
     if (cwd == NULL) {
         perror("[x] Failed to retrieve current working directory");
-        ret = -1;
+        size = -1;
         goto out_close_layer;
     }
 
     err = chdir(target);
     if (err) {
         perror("[x] Failed to switch current working directory");
-        ret = -1;
+        size = -1;
         goto out_close_layer;
     }
 
-    err = nsh_oci_unpack_archive(fd, format, filter);
-    if (err) {
-        ret = -1;
+    size = nsh_oci_unpack_archive(fd, format, filter);
+    if (size == -1)
         goto out_restore_cwd;
-    }
 
 out_restore_cwd:
     err = chdir(cwd);
     if (err) {
         perror("[x] Failed to restore current working directory");
-        ret = -1;
+        size = -1;
     }
     free(cwd);
 out_close_layer:
     close(fd);
 out:
-    return ret;
+    return size;
 }

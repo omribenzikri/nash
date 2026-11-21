@@ -1,4 +1,3 @@
-#include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
 #include <linux/limits.h>
@@ -11,14 +10,16 @@
 #include "engine/image/oci/lifecycle.h"
 #include "engine/image/lifecycle.h"
 
-static int nsh_image_import_persist(nsh_database_t *db, const char *name, const char *ref)
+static int nsh_image_import_persist(
+    nsh_database_t *db, nsh_oci_image_desc_t *desc, const char *name)
 {
     nsh_image_entity_t entity;
     int err;
 
     uuid_generate(entity.id);
     entity.name = (char *)name;
-    entity.ref = (char *)ref;
+    entity.ref = desc->ref;
+    entity.size = desc->size;
     entity.created_at = time(NULL);
 
     err = nsh_images_repo_add(db, &entity);
@@ -31,38 +32,27 @@ static int nsh_image_import_persist(nsh_database_t *db, const char *name, const 
 static int nsh_image_import_internal(
     const char *path, const char *name, nsh_database_t *db)
 {
-    char *ref;
+    nsh_oci_image_desc_t desc;
     bool exists;
     int err;
-    int ret = 0;
 
     err = nsh_images_repo_exists_by_name(db, name, &exists);
-    if (err) {
-        ret = -1;
-        goto out;
-    }
+    if (err)
+        return -1;
     if (exists) {
         fprintf(stderr, "[x] Failed to import image: %s: image already exists\n", name);
-        ret = -1;
-        goto out;
+        return -1;
     }
 
-    err = nsh_oci_image_import(NSH_WORKDIR_IMAGES, path, &ref);
-    if (err) {
-        ret = -1;
-        goto out;
-    }
+    err = nsh_oci_image_import(NSH_WORKDIR_IMAGES, path, &desc);
+    if (err)
+        return -1;
 
-    err = nsh_image_import_persist(db, name, ref);
-    if (err) {
-        ret = -1;
-        goto out_free_ref;
-    }
+    err = nsh_image_import_persist(db, &desc, name);
+    if (err)
+        return -1;
 
-out_free_ref:
-    free(ref);
-out:
-    return ret;
+    return 0;
 }
 
 int nsh_image_import(const char *path, const char *name)

@@ -4,6 +4,7 @@
 #include <string.h>
 #include <inttypes.h>
 #include <errno.h>
+#include "common/utils/macros.h"
 #include "common/utils/string.h"
 
 int str_parse_uintmax(const char *str, int base, uintmax_t max, uintmax_t *out)
@@ -45,4 +46,18 @@ ssize_t str_parse_hex(const char *str, uint8_t *buf, size_t size)
     }
 
     return hex_len / 2;
+}
+
+void str_format_bytes(uint64_t bytes, char *buf, size_t size)
+{
+    static const char *units[] = {"B", "KB", "MB", "GB", "TB", "PB"};
+    double value = bytes;
+    size_t unit = 0;
+
+    while (value >= 1000 && unit < ARRAY_LEN(units) - 1) {
+        value /= 1000;
+        unit++;
+    }
+
+    snprintf(buf, size, "%.2f %s", value, units[unit]);
 }

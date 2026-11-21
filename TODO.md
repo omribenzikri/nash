@@ -4,3 +4,5 @@
 * Extract image layers in a chroot jail
 * Fix off-by-one errors with *_MAX constants
 * Image export
+* Refcount blobs by the number of referencing manifests
+* Fix import-delete race conditions

@@ -6,7 +6,8 @@
 #include "common/entities/image.h"
 
 nsh_image_entity_t *nsh_image_entity_new(
-    const uuid_t id, const char *name, const char *ref, time_t created_at)
+    const uuid_t id, const char *name, const char *ref,
+    int64_t size, time_t created_at)
 {
     nsh_image_entity_t *entity;
 
@@ -30,6 +31,7 @@ nsh_image_entity_t *nsh_image_entity_new(
         goto error_free_name;
     }
 
+    entity->size = size;
     entity->created_at = created_at;
 
     return entity;
@@ -45,7 +47,8 @@ error:
 nsh_image_entity_t *nsh_image_entity_clone(nsh_image_entity_t *entity)
 {
     return nsh_image_entity_new(
-        entity->id, entity->name, entity->ref, entity->created_at);
+        entity->id, entity->name, entity->ref,
+        entity->size, entity->created_at);
 }
 
 void nsh_image_entity_free(nsh_image_entity_t *entity)

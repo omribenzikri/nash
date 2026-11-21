@@ -38,7 +38,7 @@ int rmdir_recursive(const char *path)
     return nftw(path, remove_callback, NTFW_MAXFDS, FTW_DEPTH | FTW_PHYS);
 }
 
-int copy_file(const char *src, const char *dst)
+int file_copy(const char *src, const char *dst)
 {
     uint8_t buffer[FILE_COPY_BUF_SIZE];
     FILE *src_stream = NULL;
@@ -93,6 +93,18 @@ cleanup:
     if (dst_stream != NULL) fclose(dst_stream);
     errno = errcode;
     return ret;
+}
+
+int64_t file_size(const char *path)
+{
+    struct stat st;
+    int err;
+
+    err = stat(path, &st);
+    if (err)
+        return -1;
+
+    return st.st_size;
 }
 
 void split_path(const char *path,
