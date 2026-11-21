@@ -48,7 +48,7 @@ typedef struct {
 typedef struct {
     const char *store_path;
     const char *bundle_path;
-    const char *ref;
+    const char *manifest_digest;
     nsh_oci_image_meta_t meta;
 } nsh_oci_export_context_t;
 
@@ -103,7 +103,7 @@ static int nsh_oci_export_context_init(nsh_oci_export_context_t *ctx,
     memset(ctx, 0, sizeof(*ctx));
     ctx->store_path = store_path;
     ctx->bundle_path = bundle_path;
-    ctx->ref = ref;
+    ctx->manifest_digest = ref;
 
     err = nsh_oci_store_load_image_meta(&ctx->meta, store_path, ref);
     if (err)
@@ -463,7 +463,41 @@ out:
     return ret;
 }
 
-static int nsh_oci_image_export_blobs(nsh_oci_export_context_t *ctx)
+static int nsh_oci_export_manifest(nsh_oci_export_context_t *ctx)
+{
+    char blob_path[PATH_MAX];
+    int err;
+
+    nsh_oci_store_manifest_path_resolve(
+        ctx->store_path, ctx->manifest_digest,
+        blob_path, sizeof(blob_path));
+
+    err = nsh_oci_bundle_add_blob(ctx->bundle_path, blob_path,
+        ctx->manifest_digest);
+    if (err)
+        return -1;
+
+    return 0;
+}
+
+static int nsh_oci_export_config(nsh_oci_export_context_t *ctx)
+{
+    char blob_path[PATH_MAX];
+    int err;
+
+    nsh_oci_store_config_path_resolve(
+        ctx->store_path, ctx->meta.manifest->config->digest,
+        blob_path, sizeof(blob_path));
+
+    err = nsh_oci_bundle_add_blob(ctx->bundle_path, blob_path,
+        ctx->meta.manifest->config->digest);
+    if (err)
+        return -1;
+
+    return 0;
+}
+
+static int nsh_oci_export_blobs(nsh_oci_export_context_t *ctx)
 {
     int err;
 
@@ -471,11 +505,15 @@ static int nsh_oci_image_export_blobs(nsh_oci_export_context_t *ctx)
     if (err)
         return -1;
 
-    err = nsh_oci_bundle_dump_image_meta(&ctx->meta, ctx->bundle_path);
+    err = nsh_oci_export_config(ctx);
     if (err)
         return -1;
 
-    err = nsh_oci_bundle_seal(ctx->bundle_path, ctx->ref);
+    err = nsh_oci_export_manifest(ctx);
+    if (err)
+        return -1;
+
+    err = nsh_oci_bundle_seal(ctx->bundle_path, ctx->manifest_digest);
     if (err)
         return -1;
 
@@ -493,7 +531,7 @@ int nsh_oci_image_export(
     if (err)
         goto out;
 
-    err = nsh_oci_image_export_blobs(&ctx);
+    err = nsh_oci_export_blobs(&ctx);
     if (err)
         goto out_destroy_ctx;
 

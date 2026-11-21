@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stddef.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -269,14 +270,54 @@ int nsh_oci_bundle_create(const char *bundle_path)
     return 0;
 }
 
-int nsh_oci_bundle_seal(const char *bundle_path, const char *ref)
+int nsh_oci_bundle_add_blob(
+    const char *bundle_path, const char *blob_path, const char *digest)
 {
-    const char *manifest_digest;
-    size_t manifest_size;
+    char target_path[PATH_MAX];
+    char target_dir[PATH_MAX];
     int err;
 
-    manifest_digest = ref;
-    manifest_size = 0; // TODO
+    err = nsh_oci_bundle_blob_path_resolve(
+        bundle_path, digest,
+        target_path, sizeof(target_path));
+    if (err)
+        return -1;
+
+    split_path(target_path, target_dir, sizeof(target_path), NULL, 0);
+
+    err = mkdir_if_missing(
+        target_dir, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+    if (err) {
+        perror("[x] Failed to create target blobs sub-directory");
+        return -1;
+    }
+
+    err = file_copy(blob_path, target_path);
+    if (err) {
+        perror("[x] Failed to copy blob into bundle");
+        return -1;
+    }
+
+    return 0;
+}
+
+int nsh_oci_bundle_seal(const char *bundle_path, const char *manifest_digest)
+{
+    char manifest_path[PATH_MAX];
+    int64_t manifest_size;
+    int err;
+
+    err = nsh_oci_bundle_blob_path_resolve(
+        bundle_path, manifest_digest,
+        manifest_path, sizeof(manifest_path));
+    if (err)
+        return -1;
+
+    manifest_size = file_size(manifest_path);
+    if (manifest_size == -1) {
+        perror("[x] Failed to read manifest size");
+        return -1;
+    }
 
     err = nsh_oci_bundle_index_dump(bundle_path, manifest_digest, manifest_size);
     if (err)
@@ -285,15 +326,6 @@ int nsh_oci_bundle_seal(const char *bundle_path, const char *ref)
     err = nsh_oci_bundle_layout_dump(bundle_path);
     if (err)
         return -1;
-
-    return 0;
-}
-
-int nsh_oci_bundle_dump_image_meta(
-    nsh_oci_image_meta_t *meta, const char *bundle_path)
-{
-    (void)bundle_path;
-    (void)meta;
 
     return 0;
 }
