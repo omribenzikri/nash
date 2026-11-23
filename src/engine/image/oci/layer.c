@@ -14,7 +14,7 @@
 #include "common/utils/filesystem.h"
 #include "engine/image/overlay.h"
 #include "engine/image/oci/whiteout.h"
-#include "engine/image/oci/unpack.h"
+#include "engine/image/oci/layer.h"
 
 #define NSH_OCI_LAYER_UNPACK_BLOCK_SIZE 10240
 
@@ -306,11 +306,11 @@ static int nsh_oci_unpack_entries(nsh_oci_unpack_context_t *ctx)
     return 0;
 }
 
-static int64_t nsh_oci_unpack_internal(struct archive *reader, struct archive *writer)
+static int nsh_oci_unpack_internal(struct archive *reader, struct archive *writer, int64_t *out_size)
 {
     nsh_oci_unpack_context_t ctx;
     int err;
-    int ret;
+    int ret = 0;
 
     err = nsh_oci_unpack_context_init(&ctx, reader, writer);
     if (err) {
@@ -342,7 +342,8 @@ static int64_t nsh_oci_unpack_internal(struct archive *reader, struct archive *w
         goto out_destroy_context;
     }
 
-    ret = ctx.size;
+    if (out_size != NULL)
+        *out_size = ctx.size;
 
 out_destroy_context:
     nsh_oci_unpack_context_destroy(&ctx);
@@ -350,12 +351,13 @@ out:
     return ret;
 }
 
-static int64_t nsh_oci_unpack_archive(int fd, int format, int filter)
+static int nsh_oci_unpack_archive(int fd, int format, int filter, int64_t *out_size)
 {
     struct archive *reader;
     struct archive *writer;
-    int64_t size;
+    int err;
     int retcode;
+    int ret = 0;
 
     reader = archive_read_new();
     writer = archive_write_disk_new();
@@ -378,68 +380,160 @@ static int64_t nsh_oci_unpack_archive(int fd, int format, int filter)
     if (retcode != ARCHIVE_OK) {
         fprintf(stderr, "[x] Failed open archive reader: %s\n",
                 archive_error_string(reader));
-        size = -1;
+        ret = -1;
         goto out;
     }
 
-    size = nsh_oci_unpack_internal(reader, writer);
-    if (size == -1)
+    err = nsh_oci_unpack_internal(reader, writer, out_size);
+    if (err == -1) {
+        ret = -1;
         goto out;
+    }
 
 out:
     archive_write_free(writer);
     archive_read_free(reader);
-    return size;
+    return ret;
 }
 
-int64_t nsh_oci_layer_unpack(const char *path, const char *target, int format, int filter)
+int nsh_oci_layer_unpack(const char *path, const char *target,
+    int format, int filter, int64_t *out_size)
 {
     char *cwd;
-    int64_t size;
     int fd;
     int err;
+    int ret = 0;
 
     fd = open(path, O_RDONLY);
     if (fd == -1) {
         perror("[x] Failed to open layer archive");
-        size = -1;
+        ret = -1;
         goto out;
     }
 
     err = mkdir(target, S_IRWXU);
     if (err) {
         perror("[x] Failed to create unpack target directory");
-        size = -1;
+        ret = -1;
         goto out_close_layer;
     }
 
     cwd = getcwd(NULL, 0);
     if (cwd == NULL) {
         perror("[x] Failed to retrieve current working directory");
-        size = -1;
+        ret = -1;
         goto out_close_layer;
     }
 
     err = chdir(target);
     if (err) {
         perror("[x] Failed to switch current working directory");
-        size = -1;
+        ret = -1;
         goto out_close_layer;
     }
 
-    size = nsh_oci_unpack_archive(fd, format, filter);
-    if (size == -1)
+    err = nsh_oci_unpack_archive(fd, format, filter, out_size);
+    if (err == -1) {
+        ret = -1;
         goto out_restore_cwd;
+    }
 
 out_restore_cwd:
     err = chdir(cwd);
     if (err) {
         perror("[x] Failed to restore current working directory");
-        size = -1;
+        ret = -1;
     }
     free(cwd);
 out_close_layer:
     close(fd);
 out:
-    return size;
+    return ret;
+}
+
+static int nsh_oci_pack_internal(struct archive *reader, struct archive *writer)
+{
+    struct archive_entry *entry;
+    int retcode;
+    int ret = 0;
+
+    entry = archive_entry_new();
+    if (entry == NULL) {
+        fprintf(stderr, "[x] Failed to allocate archive entry: %s\n",
+            archive_error_string(reader));
+        ret = -1;
+        goto out;
+    }
+
+    while ((retcode = archive_read_next_header2(reader, entry)) == ARCHIVE_OK) {
+        archive_read_disk_descend(reader);
+
+        retcode = archive_write_header(writer, entry);
+        if (retcode != ARCHIVE_OK) {
+            fprintf(stderr, "[x] Failed to write header of layer entry: %s\n",
+                archive_error_string(reader));
+            ret = -1;
+            goto out_free_entry;
+        }
+
+        (void)writer;
+        archive_entry_clear(entry);
+    }
+
+    if (retcode != ARCHIVE_EOF) {
+        fprintf(stderr, "[x] Failed to read header of layer entry: %s\n",
+            archive_error_string(reader));
+        ret = -1;
+        goto out_free_entry;
+    }
+
+out_free_entry:
+    archive_entry_free(entry);
+out:
+    return ret;
+}
+
+int nsh_oci_layer_pack(const char *path, const char *source, int format, int filter)
+{
+    struct archive *reader;
+    struct archive *writer;
+    int err;
+    int retcode;
+    int ret = 0;
+
+    reader = archive_read_disk_new();
+    writer = archive_write_new();
+
+    archive_read_disk_set_symlink_physical(reader);
+    archive_read_disk_set_standard_lookup(reader);
+
+    archive_write_set_format(writer, format);
+    archive_write_add_filter(writer, filter);
+
+    retcode = archive_write_open_filename(writer, path);
+    if (retcode != ARCHIVE_OK) {
+        fprintf(stderr, "[x] Failed open layer archive: %s\n",
+            archive_error_string(reader));
+        ret = -1;
+        goto out;
+    }
+
+    retcode = archive_read_disk_open(reader, source);
+    if (retcode != ARCHIVE_OK) {
+        fprintf(stderr, "[x] Failed open snapshot directory: %s\n",
+            archive_error_string(reader));
+        ret = -1;
+        goto out;
+    }
+
+    err = nsh_oci_pack_internal(reader, writer);
+    if (err) {
+        ret = -1;
+        goto out;
+    }
+
+out:
+    archive_read_free(reader);
+    archive_write_free(writer);
+    return ret;
 }

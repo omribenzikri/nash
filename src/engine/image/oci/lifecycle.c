@@ -18,7 +18,7 @@
 #include "engine/image/oci/parse.h"
 #include "engine/image/oci/bundle.h"
 #include "engine/image/oci/store.h"
-#include "engine/image/oci/unpack.h"
+#include "engine/image/oci/layer.h"
 #include "engine/image/oci/lifecycle.h"
 
 typedef enum {
@@ -287,9 +287,12 @@ static int nsh_oci_verify_blob(nsh_oci_import_blob_t *blob, bool *out)
 
 static int nsh_oci_import_layer(nsh_oci_import_blob_t *blob)
 {
-    int archive_format = nsh_oci_layer_archive_format(blob->media_type);
-    int archive_filter = nsh_oci_layer_archive_filter(blob->media_type);
+    int archive_format;
+    int archive_filter;
+    int err;
 
+    archive_format = nsh_oci_layer_archive_format(blob->media_type);
+    archive_filter = nsh_oci_layer_archive_filter(blob->media_type);
     if (archive_format == -1 || archive_filter == -1) {
         fprintf(stderr,
             "[x] Unsupported layer media type: %s\n",
@@ -297,10 +300,9 @@ static int nsh_oci_import_layer(nsh_oci_import_blob_t *blob)
         return -1;
     }
 
-    blob->size = nsh_oci_layer_unpack(
-        blob->source_path, blob->target_path,
-        archive_format, archive_filter);
-    if (blob->size == -1)
+    err = nsh_oci_layer_unpack(blob->source_path, blob->target_path,
+        archive_format, archive_filter, &blob->size);
+    if (err == -1)
         return -1;
 
     return 0;
@@ -465,15 +467,15 @@ out:
 
 static int nsh_oci_export_manifest(nsh_oci_export_context_t *ctx)
 {
-    char blob_path[PATH_MAX];
+    char path[PATH_MAX];
     int err;
 
     nsh_oci_store_manifest_path_resolve(
         ctx->store_path, ctx->manifest_digest,
-        blob_path, sizeof(blob_path));
+        path, sizeof(path));
 
-    err = nsh_oci_bundle_add_blob(ctx->bundle_path, blob_path,
-        ctx->manifest_digest);
+    err = nsh_oci_bundle_add_blob(ctx->bundle_path, path,
+        ctx->manifest_digest, false);
     if (err)
         return -1;
 
@@ -482,17 +484,36 @@ static int nsh_oci_export_manifest(nsh_oci_export_context_t *ctx)
 
 static int nsh_oci_export_config(nsh_oci_export_context_t *ctx)
 {
-    char blob_path[PATH_MAX];
+    char path[PATH_MAX];
     int err;
 
     nsh_oci_store_config_path_resolve(
         ctx->store_path, ctx->meta.manifest->config->digest,
-        blob_path, sizeof(blob_path));
+        path, sizeof(path));
 
-    err = nsh_oci_bundle_add_blob(ctx->bundle_path, blob_path,
-        ctx->meta.manifest->config->digest);
+    err = nsh_oci_bundle_add_blob(ctx->bundle_path, path,
+        ctx->meta.manifest->config->digest, false);
     if (err)
         return -1;
+
+    return 0;
+}
+
+static int nsh_oci_export_layers(nsh_oci_export_context_t *ctx)
+{
+    char path[PATH_MAX];
+    int err;
+
+    for (size_t i = 0; i < ctx->meta.manifest->layers_len; i++) {
+        nsh_oci_store_snapshot_path_resolve(
+            ctx->store_path, ctx->meta.manifest->layers[i]->digest,
+            path, sizeof(path));
+
+        err = nsh_oci_bundle_add_blob(ctx->bundle_path, path,
+            ctx->meta.manifest->layers[i]->digest, true);
+        if (err)
+            return -1;
+    }
 
     return 0;
 }
@@ -502,6 +523,10 @@ static int nsh_oci_export_blobs(nsh_oci_export_context_t *ctx)
     int err;
 
     err = nsh_oci_bundle_create(ctx->bundle_path);
+    if (err)
+        return -1;
+
+    err = nsh_oci_export_layers(ctx);
     if (err)
         return -1;
 

@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <linux/limits.h>
+#include <archive.h>
 #include <ocispec/image_spec_schema_image_layout_schema.h>
 #include <ocispec/image_spec_schema_image_index_schema.h>
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
@@ -12,6 +13,7 @@
 #include "common/utils/filesystem.h"
 #include "engine/image/oci/common.h"
 #include "engine/image/oci/parse.h"
+#include "engine/image/oci/layer.h"
 #include "engine/image/oci/bundle.h"
 
 static inline const char *nsh_oci_get_arch()
@@ -270,8 +272,8 @@ int nsh_oci_bundle_create(const char *bundle_path)
     return 0;
 }
 
-int nsh_oci_bundle_add_blob(
-    const char *bundle_path, const char *blob_path, const char *digest)
+int nsh_oci_bundle_add_blob(const char *bundle_path, const char *blob_path,
+    const char *digest, bool pack)
 {
     char target_path[PATH_MAX];
     char target_dir[PATH_MAX];
@@ -292,10 +294,19 @@ int nsh_oci_bundle_add_blob(
         return -1;
     }
 
-    err = file_copy(blob_path, target_path);
-    if (err) {
-        perror("[x] Failed to copy blob into bundle");
-        return -1;
+    if (pack) {
+        err = nsh_oci_layer_pack(
+            target_path, blob_path,
+            ARCHIVE_FORMAT_TAR, ARCHIVE_FILTER_GZIP);
+        if (err)
+            return -1;
+    }
+    else {
+        err = file_copy(blob_path, target_path);
+        if (err) {
+            perror("[x] Failed to copy blob into bundle");
+            return -1;
+        }
     }
 
     return 0;
