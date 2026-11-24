@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <linux/limits.h>
+#include <uuid/uuid.h>
 #include "common/utils/filesystem.h"
 #include "runtime/filesystem.h"
 #include "common/utils/macros.h"
@@ -265,13 +266,24 @@ int nsh_fs_prepare()
     return 0;
 }
 
+static void nsh_old_root_generate(char *buf, size_t size)
+{
+    uuid_t uuid;
+    char name[UUID_STR_LEN];
+
+    uuid_generate_random(uuid);
+    uuid_unparse_lower(uuid, name);
+    snprintf(buf, size, "%s", name);
+}
+
 int nsh_fs_pivot_root(const char *root, const char *cwd)
 {
-    const char *old_root_rel = "/old-rootfs";
+    char old_root_rel[NAME_MAX];
     char old_root_abs[PATH_MAX];
-    int ret = 0;
     int err;
+    int ret = 0;
 
+    nsh_old_root_generate(old_root_rel, sizeof(old_root_rel));
     snprintf(old_root_abs, sizeof(old_root_abs), "%s/%s", root, old_root_rel);
 
     err = mount(NULL, "/", NULL, MS_PRIVATE | MS_REC, NULL);
@@ -282,19 +294,19 @@ int nsh_fs_pivot_root(const char *root, const char *cwd)
 
     err = mount(root, root, NULL, MS_BIND, NULL);
     if (err) {
-        perror("[x] Failed to create a bind mount for image filesystem");
+        perror("[x] Failed to create a bind mount at container rootfs");
         return -1;
     }
 
     err = mkdir(old_root_abs, S_IRWXU);
     if (err) {
-        perror("[x] Failed to create directory for old rootfs");
+        perror("[x] Failed to create old rootfs directory");
         return -1;
     }
 
     err = syscall(SYS_pivot_root, root, old_root_abs);
     if (err) {
-        perror("[x] Failed to pivot rootfs");
+        perror("[x] Failed to pivot root");
 
         err = rmdir(old_root_abs);
         if (err)
@@ -317,7 +329,7 @@ int nsh_fs_pivot_root(const char *root, const char *cwd)
 
     err = rmdir(old_root_rel);
     if (err) {
-        perror("[x] Failed to delete old rootfs mount system");
+        perror("[x] Failed to delete old rootfs directory");
         ret = -1;
     }
 

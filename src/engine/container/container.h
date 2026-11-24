@@ -10,7 +10,7 @@
 typedef struct {
     uuid_t id;
     pid_t pid;
-    nsh_run_params_t run_params;
+    nsh_run_config_t config;
 } nsh_container_t;
 
 nsh_container_t *nsh_container_create(nsh_container_params_t *params);

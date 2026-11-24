@@ -47,7 +47,7 @@ static int nsh_hostname_set(uuid_t container_id, const char *name)
     err = sethostname(hostname, strlen(hostname));
     if (err) {
         perror("[x] Failed to set container hostname");
-        exit(EXIT_FAILURE);
+        return -1;
     }
 
     return 0;
@@ -71,14 +71,14 @@ static int nsh_container_exec(nsh_run_config_t *config)
     exec_argv = (char **)array_realloc_nullterm_shallow(
         (void **)config->exec, config->exec_len);
     if (exec_argv == NULL) {
-        fprintf(stderr, "[x] Failed to allocate argv vector\n");
+        perror("[x] Failed to allocate argv");
         goto error;
     }
 
     exec_envp = (char **)array_realloc_nullterm_shallow(
         (void **)config->env, config->env_len);
     if (exec_envp == NULL) {
-        fprintf(stderr, "[x] Failed to allocate envp vector\n");
+        perror("[x] Failed to allocate envp");
         goto error_free_argv;
     }
 
@@ -95,15 +95,15 @@ error:
     return -1;
 }
 
-static void nsh_container_startup(uuid_t id, nsh_run_params_t *params)
+static void nsh_container_startup(uuid_t id, nsh_run_config_t *config)
 {
     int err;
 
-    err = nsh_hostname_set(id, params->config.hostname);
+    err = nsh_hostname_set(id, config->hostname);
     if (err)
         exit(EXIT_FAILURE);
 
-    err = nsh_fs_pivot_root(params->rootfs_path, params->config.workdir);
+    err = nsh_fs_pivot_root(config->rootfs_path, config->workdir);
     if (err)
         exit(EXIT_FAILURE);
 
@@ -115,42 +115,42 @@ static void nsh_container_startup(uuid_t id, nsh_run_params_t *params)
     if (err)
         exit(EXIT_FAILURE);
 
-    err = nsh_creds_set(&params->config.creds);
+    err = nsh_creds_set(&config->creds);
     if (err)
         exit(EXIT_FAILURE);
 
-    nsh_container_exec(&params->config);
+    nsh_container_exec(config);
     exit(EXIT_FAILURE);
 }
 
-static pid_t nsh_run_clone(
-    uuid_t id, nsh_run_params_t *params, int cgroup_fd)
+static pid_t nsh_container_clone(
+    uuid_t id, nsh_run_config_t *config, int cgroup_fd)
 {
-    pid_t pid;
-
-    const int namespace_flags = CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWPID |
-                                CLONE_NEWIPC | CLONE_NEWCGROUP | CLONE_NEWTIME;
+    const int namespace_flags =
+        CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWPID |
+        CLONE_NEWIPC | CLONE_NEWCGROUP | CLONE_NEWTIME;
     struct clone_args args = {
         .flags  = namespace_flags | CLONE_INTO_CGROUP,
         .exit_signal = SIGCHLD,
         .cgroup = cgroup_fd
     };
+    pid_t pid;
 
     pid = syscall(SYS_clone3, &args, sizeof(args));
     if (pid == -1) {
-        perror("[x] Clone failed");
+        perror("[x] Container clone failed");
         return -1;
     }
 
     if (pid == 0) {
-        nsh_container_startup(id, params);
+        nsh_container_startup(id, config);
         assert(false);
     }
 
     return pid;
 }
 
-static pid_t nsh_run_start(uuid_t id, nsh_run_params_t *params)
+static pid_t nsh_run_create_internal(uuid_t id, nsh_run_config_t *config)
 {
     int cgroup_fd;
     pid_t pid;
@@ -159,22 +159,22 @@ static pid_t nsh_run_start(uuid_t id, nsh_run_params_t *params)
     if (cgroup_fd == -1)
         return -1;
 
-    pid = nsh_run_clone(id, params, cgroup_fd);
+    pid = nsh_container_clone(id, config, cgroup_fd);
     close(cgroup_fd);
 
     return pid;
 }
 
-pid_t nsh_run_create(uuid_t id, nsh_run_params_t *params)
+pid_t nsh_run_create(uuid_t id, nsh_run_config_t *config)
 {
     pid_t pid;
     int err;
 
-    err = nsh_cgroup_create(id, &params->config.resources);
+    err = nsh_cgroup_create(id, &config->resources);
     if (err)
         goto error;
 
-    pid = nsh_run_start(id, params);
+    pid = nsh_run_create_internal(id, config);
     if (pid == -1)
         goto error_del_cgroup;
 
@@ -186,7 +186,13 @@ error:
     return -1;
 }
 
-void nsh_run_cleanup(uuid_t id)
+int nsh_run_cleanup(uuid_t id)
 {
-    nsh_cgroup_delete(id);
+    int err;
+
+    err = nsh_cgroup_delete(id);
+    if (err)
+        return -1;
+
+    return 0;
 }

@@ -51,47 +51,39 @@ static void nsh_cgroup_cpu_max_payload_format(float value, char *buf, size_t siz
 
 static int nsh_cgroup_apply_limits(int cgroup_fd, nsh_resources_t *resources)
 {
-    int err;
     char payload[NSH_CGROUP_PAYLOAD_MAX_SIZE];
+    int err;
 
     if (resources->cpu_time > 0) {
         nsh_cgroup_cpu_max_payload_format(resources->cpu_time, payload, sizeof(payload));
 
         err = nsh_cgroup_write_file(cgroup_fd, "cpu.max", payload);
-        if (err) {
-            fprintf(stderr, "[x] Failed to set CPU time limit\n");
+        if (err)
             return -1;
-        }
-    }
-
-    if (resources->memory_bytes > 0) {
-        snprintf(payload, sizeof(payload), "%lu", resources->memory_bytes);
-
-        err = nsh_cgroup_write_file(cgroup_fd, "memory.max", payload);
-        if (err) {
-            fprintf(stderr, "[x] Failed to set memory limit\n");
-            return -1;
-        }
-    }
-
-    if (resources->memory_swap_bytes > 0) {
-        snprintf(payload, sizeof(payload), "%lu", resources->memory_swap_bytes);
-
-        err = nsh_cgroup_write_file(cgroup_fd, "memory.swap.max", payload);
-        if (err) {
-            fprintf(stderr, "[x] Failed to set swap limit\n");
-            return -1;
-        }
     }
 
     if (resources->procs > 0) {
         snprintf(payload, sizeof(payload), "%u", resources->procs);
 
         err = nsh_cgroup_write_file(cgroup_fd, "pids.max", payload);
-        if (err) {
-            fprintf(stderr, "[x] Failed to set processes limit\n");
+        if (err)
             return -1;
-        }
+    }
+
+    if (resources->memory_bytes > 0) {
+        snprintf(payload, sizeof(payload), "%lu", resources->memory_bytes);
+
+        err = nsh_cgroup_write_file(cgroup_fd, "memory.max", payload);
+        if (err)
+            return -1;
+    }
+
+    if (resources->memory_swap_bytes > 0) {
+        snprintf(payload, sizeof(payload), "%lu", resources->memory_swap_bytes);
+
+        err = nsh_cgroup_write_file(cgroup_fd, "memory.swap.max", payload);
+        if (err)
+            return -1;
     }
 
     return 0;

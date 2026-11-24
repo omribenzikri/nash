@@ -22,7 +22,7 @@ static const cap_value_t nsh_allowed_caps[] = {
     CAP_KILL,
 };
 
-static int nsh_cap_is_allowed(cap_value_t cap)
+static int nsh_caps_is_allowed(cap_value_t cap)
 {
     size_t allowed_caps_len = ARRAY_LEN(nsh_allowed_caps);
 
@@ -39,8 +39,7 @@ static int nsh_caps_set_populate(cap_t caps, cap_flag_t set)
     size_t allowed_caps_len = ARRAY_LEN(nsh_allowed_caps);
     int err;
 
-    err = cap_set_flag(caps, set,
-        allowed_caps_len, nsh_allowed_caps, CAP_SET);
+    err = cap_set_flag(caps, set, allowed_caps_len, nsh_allowed_caps, CAP_SET);
     if (err) {
         perror("[x] Failed to set capabilities whitelist");
         return -1;
@@ -49,11 +48,11 @@ static int nsh_caps_set_populate(cap_t caps, cap_flag_t set)
     return 0;
 }
 
-static int nsh_caps_standard_sets_restrict()
+static int nsh_caps_standard_sets_filter()
 {
     cap_t caps;
-    int ret = 0;
     int err;
+    int ret = 0;
 
     caps = cap_init();
     if (caps == NULL) {
@@ -87,12 +86,12 @@ out:
     return ret;
 }
 
-static int nsh_caps_bounding_set_restrict()
+static int nsh_caps_bounding_set_filter()
 {
     int err;
 
     for (cap_value_t cap = 0; cap <= CAP_LAST_CAP; cap++) {
-        if (nsh_cap_is_allowed(cap))
+        if (nsh_caps_is_allowed(cap))
             continue;
 
         err = prctl(PR_CAPBSET_DROP, cap);
@@ -133,8 +132,12 @@ static int nsh_set_no_new_privs()
 
 int nsh_caps_drop()
 {
-    return nsh_set_no_new_privs()           ||
-           nsh_caps_bounding_set_restrict() ||
-           nsh_caps_ambient_set_clear()     ||
-           nsh_caps_standard_sets_restrict();
+    int err;
+
+    err = nsh_set_no_new_privs()          ||
+          nsh_caps_standard_sets_filter() ||
+          nsh_caps_bounding_set_filter()  ||
+          nsh_caps_ambient_set_clear();
+
+    return err ? -1 : 0;
 }

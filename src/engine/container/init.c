@@ -18,6 +18,20 @@
 #define NSH_DEFAULT_WORKING_DIRECTORY "/"
 #define NSH_DEFAULT_USER "root"
 
+static int nsh_run_config_rootfs_path_init(
+    char **rootfs_path, nsh_init_context_t *ctx)
+{
+    assert(ctx->rootfs_path != NULL);
+
+    *rootfs_path = strndup(ctx->rootfs_path, PATH_MAX);
+    if (*rootfs_path == NULL) {
+        perror("[x] Failed to allocate rootfs path");
+        return -1;
+    }
+
+    return 0;
+}
+
 static int nsh_run_config_hostname_init(
     char **hostname, nsh_init_context_t *ctx)
 {
@@ -270,9 +284,13 @@ int nsh_run_config_init(nsh_run_config_t *config, nsh_init_context_t *ctx)
 {
     int err;
 
-    err = nsh_run_config_hostname_init(&config->hostname, ctx);
+    err = nsh_run_config_rootfs_path_init(&config->rootfs_path, ctx);
     if (err)
         goto error;
+
+    err = nsh_run_config_hostname_init(&config->hostname, ctx);
+    if (err)
+        goto error_free_rootfs_path;
 
     err = nsh_run_config_workdir_init(&config->workdir, ctx);
     if (err)
@@ -292,7 +310,6 @@ int nsh_run_config_init(nsh_run_config_t *config, nsh_init_context_t *ctx)
 
     return 0;
 
-
 error_free_env:
     ARRAY_FREE_DEEP(config->env);
 error_free_exec:
@@ -301,6 +318,8 @@ error_free_workdir:
     free(config->workdir);
 error_free_hostname:
     free(config->hostname);
+error_free_rootfs_path:
+    free(config->rootfs_path);
 error:
     return -1;
 }
@@ -312,44 +331,5 @@ void nsh_run_config_destroy(nsh_run_config_t *config)
     ARRAY_FREE_DEEP(config->exec);
     free(config->workdir);
     free(config->hostname);
-}
-
-static int nsh_run_params_rootfs_path_init(
-    char **rootfs_path, nsh_init_context_t *ctx)
-{
-    assert(ctx->rootfs_path != NULL);
-
-    *rootfs_path = strndup(ctx->rootfs_path, PATH_MAX);
-    if (*rootfs_path == NULL) {
-        perror("[x] Failed to allocate rootfs path");
-        return -1;
-    }
-
-    return 0;
-}
-
-int nsh_run_params_init(nsh_run_params_t *params, nsh_init_context_t *ctx)
-{
-    int err;
-
-    err = nsh_run_params_rootfs_path_init(&params->rootfs_path, ctx);
-    if (err)
-        goto error;
-
-    err = nsh_run_config_init(&params->config, ctx);
-    if (err)
-        goto error_free_rootfs_path;
-
-    return 0;
-
-error_free_rootfs_path:
-    free(params->rootfs_path);
-error:
-    return -1;
-}
-
-void nsh_run_params_destroy(nsh_run_params_t *params)
-{
-    free(params->rootfs_path);
-    nsh_run_config_destroy(&params->config);
+    free(config->rootfs_path);
 }

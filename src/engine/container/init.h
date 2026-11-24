@@ -20,7 +20,4 @@ typedef struct {
 int nsh_run_config_init(nsh_run_config_t *config, nsh_init_context_t *ctx);
 void nsh_run_config_destroy(nsh_run_config_t *config);
 
-int nsh_run_params_init(nsh_run_params_t *params, nsh_init_context_t *ctx);
-void nsh_run_params_destroy(nsh_run_params_t *params);
-
 #endif

@@ -8,6 +8,7 @@
 #include "runtime/creds.h"
 
 typedef struct {
+    char *rootfs_path;
     char *hostname;
     char *workdir;
     ARRAY_WITH_LEN(char *, exec);
@@ -16,12 +17,7 @@ typedef struct {
     nsh_resources_t resources;
 } nsh_run_config_t;
 
-typedef struct {
-    char *rootfs_path;
-    nsh_run_config_t config;
-} nsh_run_params_t;
-
-pid_t nsh_run_create(uuid_t id, nsh_run_params_t *params);
-void nsh_run_cleanup(uuid_t id);
+pid_t nsh_run_create(uuid_t id, nsh_run_config_t *config);
+int nsh_run_cleanup(uuid_t id);
 
 #endif

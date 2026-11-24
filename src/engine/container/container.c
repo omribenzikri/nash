@@ -59,7 +59,7 @@ static int nsh_container_init_internal(
 
     nsh_image_config_load(image, &image_config);
 
-    err = nsh_run_params_init(&container->run_params, &ctx);
+    err = nsh_run_config_init(&container->config, &ctx);
     if (err)
         goto error_destroy_rootfs;
 
@@ -106,13 +106,13 @@ static void nsh_container_cleanup(nsh_container_t *container)
     nsh_resolve_container_workdir_path(container->id,
         workdir_path, sizeof(workdir_path));
 
-    nsh_image_rootfs_destroy(container->run_params.rootfs_path);
+    nsh_image_rootfs_destroy(container->config.rootfs_path);
     rmdir_recursive(workdir_path);
 }
 
 static void nsh_container_destroy(nsh_container_t *container)
 {
-    nsh_run_params_destroy(&container->run_params);
+    nsh_run_config_destroy(&container->config);
 }
 
 nsh_container_t *nsh_container_create(nsh_container_params_t *params)
@@ -130,7 +130,7 @@ nsh_container_t *nsh_container_create(nsh_container_params_t *params)
     if (err)
         goto error_free_container;
 
-    container->pid = nsh_run_create(container->id, &container->run_params);
+    container->pid = nsh_run_create(container->id, &container->config);
     if (container->pid == -1)
         goto error_cleanup_destroy_container;
 
