@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <sqlite3.h>
-#include "common/entities/blob.h"
+#include "engine/common/entities/blob.h"
 #include "engine/persistence/internal/database.h" // IWYU pragma: keep
 #include "engine/persistence/repos/blobs.h"
 

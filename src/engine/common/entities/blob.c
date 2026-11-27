@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
-#include "common/entities/blob.h"
+#include "engine/common/entities/blob.h"
 
 nsh_blob_entity_t *nsh_blob_entity_new(const char *digest, int64_t size, size_t refcount)
 {

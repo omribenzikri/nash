@@ -6,9 +6,9 @@
 #include <sys/stat.h>
 #include <sys/mount.h>
 #include <linux/limits.h>
-#include "common/constants.h"
-#include "common/entities/image.h"
-#include "common/utils/macros.h"
+#include "utils/macros.h"
+#include "engine/common/constants.h"
+#include "engine/common/entities/image.h"
 #include "engine/common/container_config.h"
 #include "engine/persistence/database.h"
 #include "engine/persistence/repos/images.h"
@@ -87,7 +87,7 @@ void nsh_image_free(nsh_image_t *image)
 int nsh_image_rootfs_prepare(
     nsh_image_t *image, const char *workspace, const char *path)
 {
-    ARRAY_WITH_LEN(char *, snapshot_paths);
+    ARRAY(char *, snapshot_paths);
     int err;
     int ret = 0;
 

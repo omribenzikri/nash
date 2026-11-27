@@ -2,7 +2,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <linux/limits.h>
-#include "common/utils/filesystem.h"
+#include "utils/file.h"
 #include "engine/image/oci/common.h"
 #include "engine/image/oci/whiteout.h"
 

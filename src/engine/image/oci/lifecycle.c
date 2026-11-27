@@ -5,13 +5,14 @@
 #include <string.h>
 #include <assert.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <linux/limits.h>
 #include <collectc/cc_common.h>
 #include <collectc/cc_array.h>
-#include "common/utils/hashing.h"
-#include "common/utils/string.h"
-#include "common/utils/filesystem.h"
-#include "common/entities/blob.h"
+#include "utils/string.h"
+#include "utils/hash.h"
+#include "utils/file.h"
+#include "engine/common/entities/blob.h"
 #include "engine/persistence/repos/blobs.h"
 #include "engine/persistence/database.h"
 #include "engine/image/oci/common.h"
@@ -204,7 +205,7 @@ static int nsh_oci_verify_blob_hash(const char *path,
     } expected;
     ssize_t expected_len;
 
-    expected_len = str_parse_hex(encoded, (uint8_t *)&expected, sizeof(expected));
+    expected_len = parse_hex(encoded, (uint8_t *)&expected, sizeof(expected));
     if (expected_len == -1) {
         fprintf(stderr, "[x] Failed to parse digest encoded: %s\n", encoded);
         return -1;
@@ -279,19 +280,21 @@ static int nsh_oci_import_layer(nsh_oci_import_blob_t *blob)
 
 static int nsh_oci_import_meta(nsh_oci_import_blob_t *blob)
 {
+    struct stat st;
     int err;
 
-    err = file_copy(blob->source_path, blob->target_path);
+    err = copy_file(blob->source_path, blob->target_path);
     if (err) {
         perror("[x] Failed to copy blob");
         return -1;
     }
 
-    blob->size = file_size(blob->target_path);
-    if (blob->size == -1) {
+    err = stat(blob->target_path, &st);
+    if (err) {
         perror("[x] Failed to read blob size");
         return -1;
     }
+    blob->size = st.st_size;
 
     return 0;
 }

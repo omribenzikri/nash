@@ -4,10 +4,10 @@
 #include <string.h>
 #include <inttypes.h>
 #include <errno.h>
-#include "common/utils/macros.h"
-#include "common/utils/string.h"
+#include "utils/macros.h"
+#include "utils/string.h"
 
-int str_parse_uintmax(const char *str, int base, uintmax_t max, uintmax_t *out)
+int parse_uintmax(const char *str, int base, uintmax_t max, uintmax_t *out)
 {
     char *end;
     uintmax_t value;
@@ -25,7 +25,7 @@ int str_parse_uintmax(const char *str, int base, uintmax_t max, uintmax_t *out)
     return 0;
 }
 
-ssize_t str_parse_hex(const char *str, uint8_t *buf, size_t size)
+ssize_t parse_hex(const char *str, uint8_t *buf, size_t size)
 {
     size_t hex_len = strlen(str);
     char byte_hex[3];
@@ -39,7 +39,7 @@ ssize_t str_parse_hex(const char *str, uint8_t *buf, size_t size)
         byte_hex[1] = str[i + 1];
         byte_hex[2] = '\0';
 
-        err = str_parse_uintmax(byte_hex, 16, UINT8_MAX,
+        err = parse_uintmax(byte_hex, 16, UINT8_MAX,
             (uintmax_t *)&buf[i / 2]);
         if (err)
             return -1;
@@ -48,7 +48,7 @@ ssize_t str_parse_hex(const char *str, uint8_t *buf, size_t size)
     return hex_len / 2;
 }
 
-void str_format_bytes(uint64_t bytes, char *buf, size_t size)
+void format_bytes(uint64_t bytes, char *buf, size_t size)
 {
     static const char *units[] = {"B", "KB", "MB", "GB", "TB", "PB"};
     double value = bytes;

@@ -3,7 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include <uuid/uuid.h>
-#include "common/entities/image.h"
+#include "engine/common/entities/image.h"
 
 nsh_image_entity_t *nsh_image_entity_new(
     const uuid_t id, const char *name, const char *ref,

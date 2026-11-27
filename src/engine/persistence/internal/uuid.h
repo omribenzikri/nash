@@ -3,7 +3,7 @@
 
 #include <uuid/uuid.h>
 #include <sqlite3.h>
-#include "common/utils/macros.h"
+#include "utils/macros.h"
 
 #define NSH_UUID_TYPE_LEN 16
 #define NSH_UUID_TYPE "BLOB CHECK(length(id) = " STRINGIFY(NSH_UUID_TYPE_LEN) ")"

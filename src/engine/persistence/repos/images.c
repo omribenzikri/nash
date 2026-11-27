@@ -3,7 +3,7 @@
 #include <uuid/uuid.h>
 #include <collectc/cc_common.h>
 #include <collectc/cc_array.h>
-#include "common/entities/image.h"
+#include "engine/common/entities/image.h"
 #include "engine/persistence/database.h"
 #include "engine/persistence/internal/database.h" // IWYU pragma: keep
 #include "engine/persistence/internal/uuid.h"

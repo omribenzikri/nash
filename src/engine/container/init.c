@@ -6,8 +6,8 @@
 #include <linux/limits.h>
 #include <collectc/cc_common.h>
 #include <collectc/cc_array.h>
-#include "common/utils/array.h"
-#include "common/utils/macros.h"
+#include "utils/macros.h"
+#include "utils/dynarray.h"
 #include "runtime/creds.h"
 #include "runtime/runtime.h"
 #include "engine/common/container_config.h"
@@ -165,8 +165,8 @@ static void nsh_run_config_cmd_pick(
 static int nsh_run_config_exec_init(
     char ***exec, size_t *exec_len, nsh_init_context_t *ctx)
 {
-    ARRAY_WITH_LEN(char *, entrypoint);
-    ARRAY_WITH_LEN(char *, cmd);
+    ARRAY(char *, entrypoint);
+    ARRAY(char *, cmd);
     struct cc_array_s *exec_temp;
     enum cc_stat cc_stat;
 
@@ -179,11 +179,13 @@ static int nsh_run_config_exec_init(
     nsh_run_config_entrypoint_pick(ctx, &entrypoint, &entrypoint_len);
     nsh_run_config_cmd_pick(ctx, &cmd, &cmd_len);
 
-    cc_stat = cc_array_extend_strings(exec_temp, entrypoint, entrypoint_len);
+    cc_stat = cc_array_add_multiple_deep(
+        exec_temp, (void **)entrypoint, entrypoint_len, (void *(*)(void *))strdup);
     if (cc_stat != CC_OK)
         goto error_destroy_exec_temp;
 
-    cc_stat = cc_array_extend_strings(exec_temp, cmd, cmd_len);
+    cc_stat = cc_array_add_multiple_deep(
+        exec_temp, (void **)cmd, cmd_len, (void *(*)(void *))strdup);
     if (cc_stat != CC_OK)
         goto error_destroy_exec_temp;
 
@@ -231,7 +233,7 @@ static int nsh_run_config_env_apply_source(
         if (nsh_run_config_env_exists(vars, var))
             continue;
 
-        cc_stat = cc_array_add_string(vars, var);
+        cc_stat = cc_array_add_deep(vars, var, (void *(*)(void *))strdup);
         if (cc_stat != CC_OK) {
             fprintf(stderr, "[x] Failed to add environment variable: %s\n", var);
             return -1;

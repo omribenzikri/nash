@@ -1,12 +1,11 @@
-#ifndef _NASH_COMMON_UTILS_MACROS_H
-#define _NASH_COMMON_UTILS_MACROS_H
+#ifndef _NASH_UTILS_MACROS_H
+#define _NASH_UTILS_MACROS_H
 
-#define STRINGIFY_IMPL(x) #x
-#define STRINGIFY(x) STRINGIFY_IMPL(x)
+#define __STRINGIFY_IMPL(x) #x
+#define STRINGIFY(x) __STRINGIFY_IMPL(x)
 
+#define ARRAY(type, name) type *name; size_t name##_len;
 #define ARRAY_LEN(name) sizeof(name) / sizeof(*name)
-
-#define ARRAY_WITH_LEN(type, name) type *name; size_t name##_len;
 
 #define ARRAY_FREE_ITEMS(name) \
 do { for (size_t i = 0; i < name##_len; i++) free(name[i]); } while (0)

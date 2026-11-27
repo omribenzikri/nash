@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <uuid/uuid.h>
 #include <collectc/cc_array.h>
-#include "common/entities/image.h"
+#include "engine/common/entities/image.h"
 #include "engine/persistence/database.h"
 
 int nsh_images_repo_create(nsh_database_t *db);

@@ -3,7 +3,7 @@
 #include <stddef.h>
 #include <assert.h>
 #include <sqlite3.h>
-#include "common/constants.h"
+#include "engine/common/constants.h"
 #include "engine/persistence/repos/images.h"
 #include "engine/persistence/repos/blobs.h"
 #include "engine/persistence/internal/uuid.h"

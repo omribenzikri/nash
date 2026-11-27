@@ -8,8 +8,8 @@
 #include <grp.h>
 #include <collectc/cc_common.h>
 #include <collectc/cc_array.h>
-#include "common/utils/array.h"
-#include "common/utils/string.h"
+#include "utils/string.h"
+#include "utils/dynarray.h"
 #include "runtime/creds.h"
 #include "engine/container/config/creds.h"
 
@@ -241,7 +241,7 @@ static int nsh_supplementary_groups_lookup(
             if (strncmp(uname, grp->gr_mem[i], LOGIN_NAME_MAX) != 0)
                 continue;
 
-            cc_stat = cc_array_add_value(out, &grp->gr_gid, sizeof(grp->gr_gid));
+            cc_stat = cc_array_add_deep_memcpy(out, &grp->gr_gid, sizeof(grp->gr_gid));
             if (cc_stat != CC_OK) {
                 fprintf(stderr, "[x] Failed to add supplementary group\n");
                 ret = -1;
@@ -262,7 +262,7 @@ static int nsh_uid_resolve(const char *rootfs_path, const char *user, uid_t *out
 {
     int err;
 
-    err = str_parse_uintmax(user, 10, UINT_MAX, (uintmax_t *)out);
+    err = parse_uintmax(user, 10, UINT_MAX, (uintmax_t *)out);
     if (!err)
         return 0;
 
@@ -277,7 +277,7 @@ static int nsh_gid_resolve(const char *rootfs_path, const char *group, gid_t *ou
 {
     int err;
 
-    err = str_parse_uintmax(group, 10, UINT_MAX, (uintmax_t *)out);
+    err = parse_uintmax(group, 10, UINT_MAX, (uintmax_t *)out);
     if (!err)
         return 0;
 
@@ -330,7 +330,7 @@ int nsh_creds_resolve(const char *user, const char *group,
         }
     }
 
-    cc_stat = cc_array_to_static_values(sup_gids, sizeof(gid_t),
+    cc_stat = cc_array_to_static_flat(sup_gids, sizeof(gid_t),
         (void **)&out->sup_gids, &out->sup_gids_len);
 
     if (cc_stat != CC_OK) {

@@ -4,8 +4,8 @@
 #include <uuid/uuid.h>
 #include <libsmartcols/libsmartcols.h>
 #include <collectc/cc_array.h>
-#include "common/utils/string.h"
-#include "common/entities/image.h"
+#include "utils/string.h"
+#include "engine/common/entities/image.h"
 #include "engine/image/lifecycle.h"
 #include "cli/common/constants.h"
 #include "cli/lsi.h"
@@ -23,7 +23,7 @@ static void nsh_cli_images_table_append_row(
     tm = localtime(&entity->created_at);
 
     uuid_unparse_lower(entity->id, id);
-    str_format_bytes(entity->size, size, sizeof(size));
+    format_bytes(entity->size, size, sizeof(size));
     strftime(created_at, sizeof(created_at), NSH_CLI_TIME_FMT, tm);
 
     scols_line_set_data(line, 0, id);

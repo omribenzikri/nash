@@ -1,6 +1,9 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -8,41 +11,108 @@
 #include <sys/mount.h>
 #include <linux/mount.h>
 #include <linux/limits.h>
+#include <archive.h>
 #include <archive_entry.h>
-#include "common/utils/archive.h"
-#include "common/utils/filesystem.h"
+#include "utils/file.h"
 #include "engine/image/overlay.h"
 
 bool nsh_overlay_archive_entry_is_whiteout(struct archive_entry *entry)
 {
+    const char *xname;
+    const void *xvalue;
+    size_t xsize;
+    int retcode;
+
     if (archive_entry_filetype(entry) == AE_IFCHR &&
         archive_entry_rdev(entry) == OVERLAYFS_WHITEOUT_DEV)
             return true;
 
-    if (archive_entry_xattr_exists(entry, OVERLAYFS_WHITEOUT_XATTR))
-        return true;
+    archive_entry_xattr_reset(entry);
+
+    while ((retcode = archive_entry_xattr_next(
+        entry, &xname, &xvalue, &xsize)) == ARCHIVE_OK) {
+            if (strcmp(xname, OVERLAYFS_WHITEOUT_XATTR) == 0)
+                return true;
+        }
 
     return false;
 }
 
 bool nsh_overlay_archive_entry_is_opaque(struct archive_entry *entry)
 {
-    return archive_entry_xattr_exists(entry, OVERLAYFS_OPAQUE_XATTR);
+    const char *xname;
+    const void *xvalue;
+    size_t xsize;
+    int retcode;
+
+    archive_entry_xattr_reset(entry);
+
+    while ((retcode = archive_entry_xattr_next(
+        entry, &xname, &xvalue, &xsize)) == ARCHIVE_OK) {
+            if (strcmp(xname, OVERLAYFS_OPAQUE_XATTR) == 0)
+                return true;
+        }
+
+    return false;
+}
+
+// Guarantees atomicity (file cannot be created without the xattr)
+static int nsh_overlay_whiteout_create_file(const char *dir, const char *name)
+{
+    int dirfd;
+    int wofd;
+    int err;
+    int ret = 0;
+
+    dirfd = open(dir, O_RDONLY | O_DIRECTORY);
+    if (dirfd == -1) {
+        perror("[x] Failed to open whiteout parent directory");
+        ret = -1;
+        goto out;
+    }
+
+    wofd = openat(dirfd, ".", O_TMPFILE | O_WRONLY, S_IRUSR);
+    if (dirfd == -1) {
+        perror("[x] Failed to create whiteout");
+        ret = -1;
+        goto out_close_dirfd;
+    }
+
+    err = fsetxattr(wofd, OVERLAYFS_WHITEOUT_XATTR, "y", 1, 0);
+    if (err) {
+        perror("[x] Failed to set whiteout xattr");
+        ret = -1;
+        goto out_close_wofd;
+    }
+
+    err = linkat(wofd, "", dirfd, name, AT_EMPTY_PATH);
+    if (err) {
+        perror("[x] Failed to link whiteout");
+        ret = -1;
+        goto out_close_wofd;
+    }
+
+out_close_wofd:
+    close(wofd);
+out_close_dirfd:
+    close(dirfd);
+out:
+    return ret;
 }
 
 int nsh_overlay_whiteout_create(const char *path)
 {
-    int err;
     char dir_name[PATH_MAX];
+    char base_name[PATH_MAX];
+    int err;
 
-    split_path(path, dir_name, sizeof(dir_name), NULL, 0);
+    split_path(path,
+        dir_name, sizeof(dir_name),
+        base_name, sizeof(base_name));
 
-    err = create_with_xattr(path, S_IRUSR,
-        OVERLAYFS_WHITEOUT_XATTR, "y", 1, 0);
-    if (err) {
-        perror("[x] Failed to create whiteout");
+    err = nsh_overlay_whiteout_create_file(dir_name, base_name);
+    if (err)
         return -1;
-    }
 
     err = setxattr(dir_name, OVERLAYFS_OPAQUE_XATTR, "x", 1, 0);
     if (err) {

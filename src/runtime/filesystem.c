@@ -7,9 +7,9 @@
 #include <sys/sysmacros.h>
 #include <linux/limits.h>
 #include <uuid/uuid.h>
-#include "common/utils/filesystem.h"
+#include "utils/file.h"
+#include "utils/macros.h"
 #include "runtime/filesystem.h"
-#include "common/utils/macros.h"
 
 static const mode_t NSH_DEFAULT_CHAR_DEV_MODE =
     S_IFCHR | S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
@@ -117,7 +117,7 @@ static int nsh_mount(const nsh_mount_t *mnt)
 {
     int err;
 
-    err = mkdir_if_missing(mnt->destination, mnt->mode);
+    err = mkdir_missing(mnt->destination, mnt->mode);
     if (err) {
         perror("[x] Failed to create mount destination");
         return -1;

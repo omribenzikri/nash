@@ -2,7 +2,7 @@
 #define _NASH_ENGINE_PERSISTENCE_REPOS_BLOBS_H
 
 #include <stdint.h>
-#include "common/entities/blob.h"
+#include "engine/common/entities/blob.h"
 #include "engine/persistence/database.h"
 
 int nsh_blobs_repo_create(nsh_database_t *db);

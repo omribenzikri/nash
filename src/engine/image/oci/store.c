@@ -1,11 +1,12 @@
+#include <stdlib.h>
+#include <string.h>
 #include <assert.h>
+#include <sys/stat.h>
 #include <linux/limits.h>
 #include <ocispec/image_spec_schema_image_manifest_schema.h>
 #include <ocispec/image_spec_schema_config_schema.h>
-#include <stdlib.h>
-#include <string.h>
-#include "common/utils/filesystem.h"
-#include "common/utils/macros.h"
+#include "utils/macros.h"
+#include "utils/file.h"
 #include "engine/image/oci/common.h"
 #include "engine/image/oci/parse.h"
 #include "engine/image/oci/store.h"
@@ -20,21 +21,21 @@ int nsh_oci_store_create(const char *store_path)
     int err;
 
     snprintf(path, sizeof(path), "%s/%s", store_path, NSH_OCI_STORE_MANIFESTS_REPO);
-    err = mkdir_if_missing(path, S_IRWXU);
+    err = mkdir_missing(path, S_IRWXU);
     if (err) {
         perror("[x] Failed to create repository: " NSH_OCI_STORE_MANIFESTS_REPO);
         return -1;
     }
 
     snprintf(path, sizeof(path), "%s/%s", store_path, NSH_OCI_STORE_CONFIG_REPO);
-    err = mkdir_if_missing(path, S_IRWXU);
+    err = mkdir_missing(path, S_IRWXU);
     if (err) {
         perror("[x] Failed to create repository: " NSH_OCI_STORE_CONFIG_REPO);
         return -1;
     }
 
     snprintf(path, sizeof(path), "%s/%s", store_path, NSH_OCI_STORE_SNAPSHOTS_REPO);
-    err = mkdir_if_missing(path, S_IRWXU);
+    err = mkdir_missing(path, S_IRWXU);
     if (err) {
         perror("[x] Failed to create repository: " NSH_OCI_STORE_SNAPSHOTS_REPO);
         return -1;
@@ -109,7 +110,7 @@ error:
 int nsh_oci_store_snapshot_paths(
     nsh_oci_image_meta_t *meta, const char *store_path, char ***outp, size_t *outl)
 {
-    ARRAY_WITH_LEN(char *, paths);
+    ARRAY(char *, paths);
     size_t nlayers = meta->manifest->layers_len;
     char path[PATH_MAX];
 

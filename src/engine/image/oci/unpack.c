@@ -10,8 +10,8 @@
 #include <archive_entry.h>
 #include <collectc/cc_common.h>
 #include <collectc/cc_array.h>
-#include "common/utils/array.h"
-#include "common/utils/filesystem.h"
+#include "utils/file.h"
+#include "utils/dynarray.h"
 #include "engine/image/overlay.h"
 #include "engine/image/oci/whiteout.h"
 #include "engine/image/oci/unpack.h"
@@ -207,7 +207,8 @@ static int nsh_oci_handle_hardlink(
     const char *pathname = archive_entry_pathname(entry);
     enum cc_stat cc_stat;
 
-    cc_stat = cc_array_add_archive_entry(ctx->hardlinks, entry);
+    cc_stat = cc_array_add_deep(ctx->hardlinks, entry,
+        (void *(*)(void *))archive_entry_clone);
     if (cc_stat != CC_OK) {
         fprintf(stderr,
             "[x] Failed to add layer hardlink entry: %s\n", pathname);
@@ -228,7 +229,8 @@ static int nsh_oci_handle_whiteout(
         return -1;
     }
 
-    cc_stat = cc_array_add_archive_entry(ctx->whiteouts, entry);
+    cc_stat = cc_array_add_deep(ctx->hardlinks, entry,
+        (void *(*)(void *))archive_entry_clone);
     if (cc_stat != CC_OK) {
         fprintf(stderr,
             "[x] Failed to add layer whiteout entry: %s\n", pathname);
@@ -244,7 +246,8 @@ static int nsh_oci_handle_opaque_whiteout(
     const char *pathname = archive_entry_pathname(entry);
     enum cc_stat cc_stat;
 
-    cc_stat = cc_array_add_archive_entry(ctx->opaque_whiteouts, entry);
+    cc_stat = cc_array_add_deep(ctx->hardlinks, entry,
+        (void *(*)(void *))archive_entry_clone);
     if (cc_stat != CC_OK) {
         fprintf(stderr,
             "[x] Failed to add layer opaque whiteout entry: %s\n", pathname);

@@ -12,7 +12,7 @@
 #include <sys/syscall.h>
 #include <linux/sched.h>
 #include <uuid/uuid.h>
-#include "common/utils/array.h"
+#include "utils/dynarray.h"
 #include "runtime/filesystem.h"
 #include "runtime/resources.h"
 #include "runtime/capabilities.h"
@@ -55,43 +55,37 @@ static int nsh_hostname_set(uuid_t container_id, const char *name)
 
 static int nsh_container_exec(nsh_run_config_t *config)
 {
-    char *exec_path;
-    char **exec_argv;
-    char **exec_envp;
+    char *path;
+    char **argv = NULL;
+    char **envp = NULL;
 
     if (config->exec_len < 1) {
-        fprintf(stderr,
-            "[x] Failed to execute container program: "
-            "no executable provided\n");
+        fprintf(stderr, "[x] Failed to execute: no executable provided\n");
         goto error;
     }
 
-    exec_path = config->exec[0];
+    path = config->exec[0];
 
-    exec_argv = (char **)array_realloc_nullterm_shallow(
-        (void **)config->exec, config->exec_len);
-    if (exec_argv == NULL) {
+    argv = realloc(config->exec, (config->exec_len + 1) * sizeof(*argv));
+    if (argv == NULL) {
         perror("[x] Failed to allocate argv");
         goto error;
     }
+    argv[config->exec_len] = NULL;
 
-    exec_envp = (char **)array_realloc_nullterm_shallow(
-        (void **)config->env, config->env_len);
-    if (exec_envp == NULL) {
+    envp = realloc(config->env, (config->env_len + 1) * sizeof(*envp));
+    if (envp == NULL) {
         perror("[x] Failed to allocate envp");
-        goto error_free_argv;
+        goto error;
     }
+    envp[config->env_len] = NULL;
 
-    execve(exec_path, exec_argv, exec_envp);
-
+    execve(path, argv, envp);
     perror("[x] Failed to execute container program");
-    goto error_free_envp;
 
-error_free_envp:
-    free(exec_envp);
-error_free_argv:
-    free(exec_argv);
 error:
+    if (argv) free(argv);
+    if (envp) free(envp);
     return -1;
 }
 
