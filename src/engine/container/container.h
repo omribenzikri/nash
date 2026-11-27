@@ -4,13 +4,13 @@
 #include <sys/types.h>
 #include <linux/limits.h>
 #include <uuid/uuid.h>
-#include "runtime/runtime.h"
+#include <container/common.h>
 #include "engine/container/init.h"
 
 typedef struct {
     uuid_t id;
     pid_t pid;
-    nsh_run_config_t config;
+    cntr_config_t config;
 } nsh_container_t;
 
 nsh_container_t *nsh_container_create(nsh_container_params_t *params);

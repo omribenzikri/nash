@@ -2,47 +2,45 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdbool.h>
-#include <unistd.h>
 #include <string.h>
 #include <assert.h>
+#include <unistd.h>
 #include <signal.h>
 #include <limits.h>
-#include <sys/stat.h>
 #include <sys/syscall.h>
 #include <linux/sched.h>
 #include <uuid/uuid.h>
-#include "utils/dynarray.h"
-#include "runtime/filesystem.h"
-#include "runtime/resources.h"
-#include "runtime/capabilities.h"
-#include "runtime/creds.h"
-#include "runtime/runtime.h"
+#include "container/common.h"
+#include "container/filesystem.h"
+#include "container/capabilities.h"
+#include "container/creds.h"
+#include "container/resources.h"
+#include "container/container.h"
 
-#define NSH_GEN_HOSTNAME_LEN 13
+#define CNTR_GEN_HOSTNAME_LEN 13
 
-static void nsh_hostname_generate(uuid_t container_id, char *buf, size_t size)
+static void cntr_hostname_generate(uuid_t id, char *buf, size_t size)
 {
     char uuid_string[UUID_STR_LEN];
     char *hostname;
 
-    assert(NSH_GEN_HOSTNAME_LEN < HOST_NAME_MAX);
-    assert(NSH_GEN_HOSTNAME_LEN < UUID_STR_LEN);
-    uuid_unparse_lower(container_id, uuid_string);
+    assert(CNTR_GEN_HOSTNAME_LEN < HOST_NAME_MAX);
+    assert(CNTR_GEN_HOSTNAME_LEN < UUID_STR_LEN);
+    uuid_unparse_lower(id, uuid_string);
 
-    hostname = uuid_string + sizeof(uuid_string) - NSH_GEN_HOSTNAME_LEN;
+    hostname = uuid_string + sizeof(uuid_string) - CNTR_GEN_HOSTNAME_LEN;
     snprintf(buf, size, "%s", hostname);
 }
 
-static int nsh_hostname_set(uuid_t container_id, const char *name)
+static int cntr_hostname_set(uuid_t id, const char *hostname)
 {
+    char buf[HOST_NAME_MAX];
     int err;
-    char hostname[HOST_NAME_MAX];
 
-    if (name == NULL)
-        nsh_hostname_generate(container_id, hostname, sizeof(hostname));
+    if (hostname == NULL)
+        cntr_hostname_generate(id, buf, sizeof(buf));
     else
-        snprintf(hostname, sizeof(hostname), "%s", name);
+        snprintf(buf, sizeof(buf), "%s", hostname);
 
     err = sethostname(hostname, strlen(hostname));
     if (err) {
@@ -53,7 +51,7 @@ static int nsh_hostname_set(uuid_t container_id, const char *name)
     return 0;
 }
 
-static int nsh_container_exec(nsh_run_config_t *config)
+static int cntr_exec(cntr_config_t *config)
 {
     char *path;
     char **argv = NULL;
@@ -89,36 +87,24 @@ error:
     return -1;
 }
 
-static void nsh_container_startup(uuid_t id, nsh_run_config_t *config)
+static int cntr_init(uuid_t id, cntr_config_t *config)
 {
     int err;
 
-    err = nsh_hostname_set(id, config->hostname);
+    err = cntr_hostname_set(id, config->hostname) ||
+          cntr_pivot_root(config->rootfs_path, config->workdir) ||
+          cntr_filesystem_init() ||
+          cntr_caps_drop() ||
+          cntr_creds_set(&config->creds);
     if (err)
-        exit(EXIT_FAILURE);
+        return -1;
 
-    err = nsh_fs_pivot_root(config->rootfs_path, config->workdir);
-    if (err)
-        exit(EXIT_FAILURE);
-
-    err = nsh_fs_prepare();
-    if (err)
-        exit(EXIT_FAILURE);
-
-    err = nsh_caps_drop();
-    if (err)
-        exit(EXIT_FAILURE);
-
-    err = nsh_creds_set(&config->creds);
-    if (err)
-        exit(EXIT_FAILURE);
-
-    nsh_container_exec(config);
+    cntr_exec(config);
     exit(EXIT_FAILURE);
 }
 
-static pid_t nsh_container_clone(
-    uuid_t id, nsh_run_config_t *config, int cgroup_fd)
+static pid_t cntr_clone(
+    uuid_t id, cntr_config_t *config, int cgroup_fd)
 {
     const int namespace_flags =
         CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWPID |
@@ -137,54 +123,54 @@ static pid_t nsh_container_clone(
     }
 
     if (pid == 0) {
-        nsh_container_startup(id, config);
-        assert(false);
+        cntr_init(id, config);
+        assert(1);
     }
 
     return pid;
 }
 
-static pid_t nsh_run_create_internal(uuid_t id, nsh_run_config_t *config)
+static pid_t cntr_create_internal(uuid_t id, cntr_config_t *config)
 {
     int cgroup_fd;
     pid_t pid;
 
-    cgroup_fd = nsh_cgroup_open(id);
+    cgroup_fd = cntr_cgroup_open(id);
     if (cgroup_fd == -1)
         return -1;
 
-    pid = nsh_container_clone(id, config, cgroup_fd);
+    pid = cntr_clone(id, config, cgroup_fd);
     close(cgroup_fd);
 
     return pid;
 }
 
-pid_t nsh_run_create(uuid_t id, nsh_run_config_t *config)
+int cntr_create(uuid_t id, cntr_config_t *config)
 {
     pid_t pid;
     int err;
 
-    err = nsh_cgroup_create(id, &config->resources);
+    err = cntr_cgroup_create(id, &config->resources);
     if (err)
         goto error;
 
-    pid = nsh_run_create_internal(id, config);
+    pid = cntr_create_internal(id, config);
     if (pid == -1)
         goto error_del_cgroup;
 
     return 0;
 
 error_del_cgroup:
-    nsh_cgroup_delete(id);
+    cntr_cgroup_delete(id);
 error:
     return -1;
 }
 
-int nsh_run_cleanup(uuid_t id)
+int cntr_delete(uuid_t id)
 {
     int err;
 
-    err = nsh_cgroup_delete(id);
+    err = cntr_cgroup_delete(id);
     if (err)
         return -1;
 

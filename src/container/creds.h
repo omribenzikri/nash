@@ -1,7 +1,6 @@
-#ifndef _NASH_RUNTIME_CREDS_H
-#define _NASH_RUNTIME_CREDS_H
+#ifndef _NASH_CONTAINER_CREDS_H
+#define _NASH_CONTAINER_CREDS_H
 
-#include <stddef.h>
 #include <sys/types.h>
 #include "utils/macros.h"
 
@@ -9,8 +8,8 @@ typedef struct {
     uid_t uid;
     gid_t gid;
     ARRAY(gid_t, sup_gids);
-} nsh_creds_t;
+} cntr_creds_t;
 
-int nsh_creds_set(nsh_creds_t *creds);
+int cntr_creds_set(cntr_creds_t *creds);
 
 #endif

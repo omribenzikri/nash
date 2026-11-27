@@ -4,8 +4,8 @@
 #include <sys/stat.h>
 #include <linux/limits.h>
 #include <uuid/uuid.h>
+#include <container/container.h>
 #include "utils/file.h"
-#include "runtime/runtime.h"
 #include "engine/common/constants.h"
 #include "engine/image/image.h"
 #include "engine/common/container_config.h"
@@ -32,7 +32,7 @@ static int nsh_container_init_internal(
     nsh_container_params_t *user_params)
 {
     char workdir_path[PATH_MAX];
-    char rootfs_path[PATH_MAX];
+    char rootfs_path[PATH_MAX * 2];
     nsh_container_config_t image_config;
     nsh_init_context_t ctx = {
         .rootfs_path = rootfs_path,
@@ -130,7 +130,7 @@ nsh_container_t *nsh_container_create(nsh_container_params_t *params)
     if (err)
         goto error_free_container;
 
-    container->pid = nsh_run_create(container->id, &container->config);
+    container->pid = cntr_create(container->id, &container->config);
     if (container->pid == -1)
         goto error_cleanup_destroy_container;
 
@@ -147,7 +147,7 @@ error:
 
 void nsh_container_delete(nsh_container_t *container)
 {
-    nsh_run_cleanup(container->id);
+    cntr_delete(container->id);
     nsh_container_cleanup(container);
 }
 

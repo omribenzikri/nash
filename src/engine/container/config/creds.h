@@ -3,11 +3,11 @@
 
 #include <sys/types.h>
 #include <collectc/cc_array.h>
-#include "runtime/creds.h"
+#include <container/creds.h>
 
 int nsh_creds_parse(const char *in, char **out_user, char **out_group);
 
 int nsh_creds_resolve(const char *user, const char *group,
-    const char *rootfs_path, nsh_creds_t *out);
+    const char *rootfs_path, cntr_creds_t *out);
 
 #endif

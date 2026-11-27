@@ -8,8 +8,8 @@
 #include <collectc/cc_array.h>
 #include "utils/macros.h"
 #include "utils/dynarray.h"
-#include "runtime/creds.h"
-#include "runtime/runtime.h"
+#include <container/creds.h>
+#include <container/common.h>
 #include "engine/common/container_config.h"
 #include "engine/container/config/env.h"
 #include "engine/container/config/creds.h"
@@ -94,7 +94,7 @@ static void nsh_run_config_creds_pick(
 }
 
 static int nsh_run_config_creds_init(
-    nsh_creds_t *creds, nsh_init_context_t *ctx)
+    cntr_creds_t *creds, nsh_init_context_t *ctx)
 {
     char *creds_str;
     char *user;
@@ -123,7 +123,7 @@ out:
     return ret;
 }
 
-static void nsh_run_config_creds_destroy(nsh_creds_t *creds)
+static void nsh_run_config_creds_destroy(cntr_creds_t *creds)
 {
     free(creds->sup_gids);
 }
@@ -282,7 +282,7 @@ error:
     return -1;
 }
 
-int nsh_run_config_init(nsh_run_config_t *config, nsh_init_context_t *ctx)
+int nsh_run_config_init(cntr_config_t *config, nsh_init_context_t *ctx)
 {
     int err;
 
@@ -326,7 +326,7 @@ error:
     return -1;
 }
 
-void nsh_run_config_destroy(nsh_run_config_t *config)
+void nsh_run_config_destroy(cntr_config_t *config)
 {
     nsh_run_config_creds_destroy(&config->creds);
     ARRAY_FREE_DEEP(config->env);

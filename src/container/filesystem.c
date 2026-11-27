@@ -1,20 +1,19 @@
 #include <stdio.h>
-#include <sched.h>
 #include <unistd.h>
-#include <sys/mount.h>
 #include <sys/syscall.h>
+#include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <linux/limits.h>
 #include <uuid/uuid.h>
-#include "utils/file.h"
 #include "utils/macros.h"
-#include "runtime/filesystem.h"
+#include "utils/file.h"
+#include "container/filesystem.h"
 
-static const mode_t NSH_DEFAULT_CHAR_DEV_MODE =
+static const mode_t CNTR_DEFAULT_CHAR_DEV_MODE =
     S_IFCHR | S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
 
-static const nsh_mount_t nsh_root_mounts[] = {
+static const cntr_mount_t cntr_root_mounts[] = {
     {
         .source = "proc",
         .destination = "/proc",
@@ -35,7 +34,7 @@ static const nsh_mount_t nsh_root_mounts[] = {
     },
 };
 
-static const nsh_mount_t nsh_sys_mounts[] = {
+static const cntr_mount_t cntr_sys_mounts[] = {
     {
         .source = "cgroup2",
         .destination = "/sys/fs/cgroup",
@@ -44,7 +43,7 @@ static const nsh_mount_t nsh_sys_mounts[] = {
     }
 };
 
-static const nsh_mount_t nsh_dev_mounts[] = {
+static const cntr_mount_t cntr_dev_mounts[] = {
     {
         .source = "devpts",
         .destination = "/dev/pts",
@@ -65,46 +64,46 @@ static const nsh_mount_t nsh_dev_mounts[] = {
     },
 };
 
-static const nsh_node_t nsh_dev_nodes[] = {
+static const cntr_node_t cntr_dev_nodes[] = {
     {
         .path = "/dev/zero",
-        .mode = NSH_DEFAULT_CHAR_DEV_MODE,
+        .mode = CNTR_DEFAULT_CHAR_DEV_MODE,
         .dev_major = 1,
         .dev_minor = 5
     },
     {
         .path = "/dev/full",
-        .mode = NSH_DEFAULT_CHAR_DEV_MODE,
+        .mode = CNTR_DEFAULT_CHAR_DEV_MODE,
         .dev_major = 1,
         .dev_minor = 7
     },
     {
         .path = "/dev/null",
-        .mode = NSH_DEFAULT_CHAR_DEV_MODE,
+        .mode = CNTR_DEFAULT_CHAR_DEV_MODE,
         .dev_major = 1,
         .dev_minor = 3
     },
     {
         .path = "/dev/random",
-        .mode = NSH_DEFAULT_CHAR_DEV_MODE,
+        .mode = CNTR_DEFAULT_CHAR_DEV_MODE,
         .dev_major = 1,
         .dev_minor = 8
     },
     {
         .path = "/dev/urandom",
-        .mode = NSH_DEFAULT_CHAR_DEV_MODE,
+        .mode = CNTR_DEFAULT_CHAR_DEV_MODE,
         .dev_major = 1,
         .dev_minor = 8
     },
     {
         .path = "/dev/tty",
-        .mode = NSH_DEFAULT_CHAR_DEV_MODE,
+        .mode = CNTR_DEFAULT_CHAR_DEV_MODE,
         .dev_major = 5,
         .dev_minor = 0
     }
 };
 
-static const nsh_symlink_t nsh_dev_symlinks[] = {
+static const cntr_symlink_t cntr_dev_symlinks[] = {
     { .from = "/dev/pts/ptmx",   .to = "/dev/ptmx"   },
     { .from = "/proc/self/fd",   .to = "/dev/fd"     },
     { .from = "/proc/kcore",     .to = "/dev/core"   },
@@ -113,160 +112,118 @@ static const nsh_symlink_t nsh_dev_symlinks[] = {
     { .from = "/proc/self/fd/2", .to = "/dev/stderr" }
 };
 
-static int nsh_mount(const nsh_mount_t *mnt)
-{
-    int err;
-
-    err = mkdir_missing(mnt->destination, mnt->mode);
-    if (err) {
-        perror("[x] Failed to create mount destination");
-        return -1;
-    }
-
-    err = mount(mnt->source, mnt->destination,
-                mnt->type, mnt->flags, mnt->data);
-    if (err) {
-        perror("[x] Failed to mount");
-        return -1;
-    }
-
-    return 0;
-}
-
-static int nsh_mount_multiple(const nsh_mount_t *mounts, size_t len)
+static int cntr_mount(const cntr_mount_t *mounts, size_t len)
 {
     int err;
 
     for (size_t i = 0; i < len; i ++) {
-        err = nsh_mount(&mounts[i]);
-        if (err)
+        err = mkdir_missing(mounts[i].destination, mounts[i].mode);
+        if (err) {
+            perror("[x] Failed to create mount directory");
             return -1;
+        }
+
+        err = mount(mounts[i].source, mounts[i].destination,
+            mounts[i].type, mounts[i].flags, mounts[i].data);
+        if (err) {
+            perror("[x] Failed to mount");
+            return -1;
+        }
     }
 
     return 0;
 }
 
-static int nsh_node_create(const nsh_node_t *node)
+static int cntr_mknod(const cntr_node_t *nodes, size_t len)
 {
-    dev_t dev = makedev(node->dev_major, node->dev_minor);
+    dev_t dev;
     int err;
 
-    err = mknod(node->path, node->mode, dev);
-    if (err) {
-        perror("[x] Failed to create node");
-        return -1;
+    for (size_t i = 0; i < len; i ++) {
+        dev = makedev(nodes[i].dev_major, nodes[i].dev_minor);
+
+        err = mknod(nodes[i].path, nodes[i].mode, dev);
+        if (err) {
+            perror("[x] Failed to create node");
+            return -1;
+        }
     }
 
     return 0;
 }
 
-static int nsh_node_create_multiple(const nsh_node_t *nodes, size_t len)
+static int cntr_symlink(const cntr_symlink_t *symlinks, size_t len)
 {
     int err;
 
     for (size_t i = 0; i < len; i ++) {
-        err = nsh_node_create(&nodes[i]);
-        if (err)
+        err = symlink(symlinks[i].from, symlinks[i].to);
+        if (err) {
+            perror("[x] Failed to symlink");
             return -1;
+        }
     }
 
     return 0;
 }
 
-static int nsh_symlink_create(const nsh_symlink_t *sym)
+static int cntr_rootfs_init()
 {
     int err;
 
-    err = symlink(sym->from, sym->to);
-    if (err) {
-        perror("[x] Failed to symlink");
-        return -1;
-    }
-
-    return 0;
-}
-
-static int nsh_symlink_create_multiple(const nsh_symlink_t *symlinks, size_t len)
-{
-    int err;
-
-    for (size_t i = 0; i < len; i ++) {
-        err = nsh_symlink_create(&symlinks[i]);
-        if (err)
-            return -1;
-    }
-
-    return 0;
-}
-
-static int nsh_fs_root_prepare()
-{
-    size_t root_mounts_len = ARRAY_LEN(nsh_root_mounts);
-    int err;
-
-    err = nsh_mount_multiple(nsh_root_mounts, root_mounts_len);
+    err = cntr_mount(cntr_root_mounts, ARRAY_LEN(cntr_root_mounts));
     if (err)
         return -1;
 
     return 0;
 }
 
-static int nsh_fs_sys_prepare()
+static int cntr_sysfs_init()
 {
-    size_t sys_mounts_len = ARRAY_LEN(nsh_sys_mounts);
     int err;
 
-    err = nsh_mount_multiple(nsh_sys_mounts, sys_mounts_len);
+    err = cntr_mount(cntr_sys_mounts, ARRAY_LEN(cntr_sys_mounts));
     if (err)
         return -1;
 
     return 0;
 }
 
-static int nsh_fs_dev_prepare()
+static int cntr_devfs_init()
 {
-    size_t mounts_len = ARRAY_LEN(nsh_dev_mounts);
-    size_t nodes_len = ARRAY_LEN(nsh_dev_nodes);
-    size_t symlinks_len = ARRAY_LEN(nsh_dev_symlinks);
     int err;
 
-    err = nsh_mount_multiple(nsh_dev_mounts, mounts_len);
+    err = cntr_mount(cntr_dev_mounts, ARRAY_LEN(cntr_dev_mounts));
     if (err)
         return -1;
 
-    err = nsh_node_create_multiple(nsh_dev_nodes, nodes_len);
+    err = cntr_mknod(cntr_dev_nodes, ARRAY_LEN(cntr_dev_nodes));
     if (err)
         return -1;
 
-    err = nsh_symlink_create_multiple(nsh_dev_symlinks, symlinks_len);
+    err = cntr_symlink(cntr_dev_symlinks, ARRAY_LEN(cntr_dev_symlinks));
     if (err)
         return -1;
 
     return 0;
 }
 
-int nsh_fs_prepare()
+int cntr_filesystem_init()
 {
     int err;
 
     umask(0);
 
-    err = nsh_fs_root_prepare();
-    if (err)
-        return -1;
+    err = cntr_rootfs_init() ||
+          cntr_sysfs_init() ||
+          cntr_devfs_init();
 
-    err = nsh_fs_sys_prepare();
-    if (err)
-        return -1;
-
-    err = nsh_fs_dev_prepare();
-    if (err)
-        return -1;
-
-    return 0;
+    return err ? -1 : 0;
 }
 
-static void nsh_old_root_generate(char *buf, size_t size)
+// Ensures that name conflicts with pre-existing image files
+// or directories are practically impossible
+static void cntr_old_root_name_generate(char *buf, size_t size)
 {
     uuid_t uuid;
     char name[UUID_STR_LEN];
@@ -276,15 +233,15 @@ static void nsh_old_root_generate(char *buf, size_t size)
     snprintf(buf, size, "%s", name);
 }
 
-int nsh_fs_pivot_root(const char *root, const char *cwd)
+int cntr_pivot_root(const char *root, const char *cwd)
 {
-    char old_root_rel[NAME_MAX];
-    char old_root_abs[PATH_MAX];
+    char old_root_name[NAME_MAX];
+    char old_root_path[PATH_MAX];
     int err;
     int ret = 0;
 
-    nsh_old_root_generate(old_root_rel, sizeof(old_root_rel));
-    snprintf(old_root_abs, sizeof(old_root_abs), "%s/%s", root, old_root_rel);
+    cntr_old_root_name_generate(old_root_name, sizeof(old_root_name));
+    snprintf(old_root_path, sizeof(old_root_path), "%s/%s", root, old_root_name);
 
     err = mount(NULL, "/", NULL, MS_PRIVATE | MS_REC, NULL);
     if (err) {
@@ -294,21 +251,21 @@ int nsh_fs_pivot_root(const char *root, const char *cwd)
 
     err = mount(root, root, NULL, MS_BIND, NULL);
     if (err) {
-        perror("[x] Failed to create a bind mount at container rootfs");
+        perror("[x] Failed to create a bind mount at rootfs");
         return -1;
     }
 
-    err = mkdir(old_root_abs, S_IRWXU);
+    err = mkdir(old_root_path, S_IRWXU);
     if (err) {
         perror("[x] Failed to create old rootfs directory");
         return -1;
     }
 
-    err = syscall(SYS_pivot_root, root, old_root_abs);
+    err = syscall(SYS_pivot_root, root, old_root_path);
     if (err) {
         perror("[x] Failed to pivot root");
 
-        err = rmdir(old_root_abs);
+        err = rmdir(old_root_path);
         if (err)
             perror("[x] Failed to delete old rootfs directory");
 
@@ -321,13 +278,13 @@ int nsh_fs_pivot_root(const char *root, const char *cwd)
         ret = -1;
     }
 
-    err = umount2(old_root_rel, MNT_DETACH);
+    err = umount2(old_root_path, MNT_DETACH);
     if (err) {
         perror("[x] Failed to unmount old rootfs");
         ret = -1;
     }
 
-    err = rmdir(old_root_rel);
+    err = rmdir(old_root_path);
     if (err) {
         perror("[x] Failed to delete old rootfs directory");
         ret = -1;

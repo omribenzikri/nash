@@ -8,9 +8,9 @@
 #include <grp.h>
 #include <collectc/cc_common.h>
 #include <collectc/cc_array.h>
+#include <container/creds.h>
 #include "utils/string.h"
 #include "utils/dynarray.h"
-#include "runtime/creds.h"
 #include "engine/container/config/creds.h"
 
 #define PASSWD_PATH "/etc/passwd"
@@ -289,7 +289,7 @@ static int nsh_gid_resolve(const char *rootfs_path, const char *group, gid_t *ou
 }
 
 int nsh_creds_resolve(const char *user, const char *group,
-    const char *rootfs_path, nsh_creds_t *out)
+    const char *rootfs_path, cntr_creds_t *out)
 {
     struct cc_array_s *sup_gids;
     enum cc_stat cc_stat;

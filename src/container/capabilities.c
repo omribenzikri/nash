@@ -5,9 +5,9 @@
 #include <linux/capability.h>
 #include <linux/prctl.h>
 #include "utils/macros.h"
-#include "runtime/capabilities.h"
+#include "container/capabilities.h"
 
-static const cap_value_t nsh_allowed_caps[] = {
+static const cap_value_t cntr_caps[] = {
     CAP_DAC_OVERRIDE,
     CAP_CHOWN,
     CAP_FOWNER,
@@ -22,33 +22,43 @@ static const cap_value_t nsh_allowed_caps[] = {
     CAP_KILL,
 };
 
-static int nsh_caps_is_allowed(cap_value_t cap)
+static int cntr_set_no_new_privs()
 {
-    size_t allowed_caps_len = ARRAY_LEN(nsh_allowed_caps);
-
-    for (size_t i = 0; i < allowed_caps_len; i++) {
-        if (nsh_allowed_caps[i] == cap)
-            return true;
-    }
-
-    return false;
-}
-
-static int nsh_caps_set_populate(cap_t caps, cap_flag_t set)
-{
-    size_t allowed_caps_len = ARRAY_LEN(nsh_allowed_caps);
     int err;
 
-    err = cap_set_flag(caps, set, allowed_caps_len, nsh_allowed_caps, CAP_SET);
+    err = prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
     if (err) {
-        perror("[x] Failed to set capabilities whitelist");
+        perror("[x] Failed to set process no_new_privs attribute");
         return -1;
     }
 
     return 0;
 }
 
-static int nsh_caps_standard_sets_filter()
+static int cntr_caps_is_allowed(cap_value_t cap)
+{
+    for (size_t i = 0; i < ARRAY_LEN(cntr_caps); i++) {
+        if (cntr_caps[i] == cap)
+            return true;
+    }
+
+    return false;
+}
+
+static int cntr_caps_set_populate(cap_t caps, cap_flag_t set)
+{
+    int err;
+
+    err = cap_set_flag(caps, set, ARRAY_LEN(cntr_caps), cntr_caps, CAP_SET);
+    if (err) {
+        perror("[x] Failed to populate capabilities set");
+        return -1;
+    }
+
+    return 0;
+}
+
+static int cntr_caps_standard_sets_filter()
 {
     cap_t caps;
     int err;
@@ -61,9 +71,9 @@ static int nsh_caps_standard_sets_filter()
         goto out;
     }
 
-    err = nsh_caps_set_populate(caps, CAP_EFFECTIVE) ||
-          nsh_caps_set_populate(caps, CAP_PERMITTED) ||
-          nsh_caps_set_populate(caps, CAP_INHERITABLE);
+    err = cntr_caps_set_populate(caps, CAP_EFFECTIVE) ||
+          cntr_caps_set_populate(caps, CAP_PERMITTED) ||
+          cntr_caps_set_populate(caps, CAP_INHERITABLE);
     if (err) {
         ret = -1;
         goto out_free_caps;
@@ -86,12 +96,12 @@ out:
     return ret;
 }
 
-static int nsh_caps_bounding_set_filter()
+static int cntr_caps_bounding_set_filter()
 {
     int err;
 
     for (cap_value_t cap = 0; cap <= CAP_LAST_CAP; cap++) {
-        if (nsh_caps_is_allowed(cap))
+        if (cntr_caps_is_allowed(cap))
             continue;
 
         err = prctl(PR_CAPBSET_DROP, cap);
@@ -104,7 +114,7 @@ static int nsh_caps_bounding_set_filter()
     return 0;
 }
 
-static int nsh_caps_ambient_set_clear()
+static int cntr_caps_ambient_set_clear()
 {
     int err;
 
@@ -117,27 +127,17 @@ static int nsh_caps_ambient_set_clear()
     return 0;
 }
 
-static int nsh_set_no_new_privs()
+int cntr_caps_drop()
 {
     int err;
 
-    err = prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
-    if (err) {
-        perror("[x] Failed to set process no_new_privs attribute");
+    err = cntr_set_no_new_privs();
+    if (err)
         return -1;
-    }
 
-    return 0;
-}
-
-int nsh_caps_drop()
-{
-    int err;
-
-    err = nsh_set_no_new_privs()          ||
-          nsh_caps_standard_sets_filter() ||
-          nsh_caps_bounding_set_filter()  ||
-          nsh_caps_ambient_set_clear();
+    err = cntr_caps_standard_sets_filter() ||
+          cntr_caps_bounding_set_filter()  ||
+          cntr_caps_ambient_set_clear();
 
     return err ? -1 : 0;
 }

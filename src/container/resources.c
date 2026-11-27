@@ -8,11 +8,11 @@
 #include <sys/stat.h>
 #include <linux/limits.h>
 #include <uuid/uuid.h>
-#include "runtime/resources.h"
+#include "container/resources.h"
 
-#define NSH_CGROUP_PAYLOAD_MAX_SIZE 128
+#define CNTR_CGROUP_PAYLOAD_MAX_SIZE 128
 
-static int nsh_cgroup_write_file(int cgroup_fd, const char *name, const char *payload)
+static int cntr_cgroup_write_file(int cgroup_fd, const char *name, const char *payload)
 {
     int fd;
     ssize_t nwritten;
@@ -38,7 +38,7 @@ out:
     return ret;
 }
 
-static void nsh_cgroup_cpu_max_payload_format(float value, char *buf, size_t size)
+static void cntr_cgroup_cpu_max_payload_format(float value, char *buf, size_t size)
 {
     const int duration_us = 100000;
     int max_us;
@@ -49,15 +49,15 @@ static void nsh_cgroup_cpu_max_payload_format(float value, char *buf, size_t siz
     snprintf(buf, size, "%d %d", max_us, duration_us);
 }
 
-static int nsh_cgroup_apply_limits(int cgroup_fd, nsh_resources_t *resources)
+static int cntr_cgroup_apply_limits(int cgroup_fd, cntr_resources_t *resources)
 {
-    char payload[NSH_CGROUP_PAYLOAD_MAX_SIZE];
+    char payload[CNTR_CGROUP_PAYLOAD_MAX_SIZE];
     int err;
 
     if (resources->cpu_time > 0) {
-        nsh_cgroup_cpu_max_payload_format(resources->cpu_time, payload, sizeof(payload));
+        cntr_cgroup_cpu_max_payload_format(resources->cpu_time, payload, sizeof(payload));
 
-        err = nsh_cgroup_write_file(cgroup_fd, "cpu.max", payload);
+        err = cntr_cgroup_write_file(cgroup_fd, "cpu.max", payload);
         if (err)
             return -1;
     }
@@ -65,7 +65,7 @@ static int nsh_cgroup_apply_limits(int cgroup_fd, nsh_resources_t *resources)
     if (resources->procs > 0) {
         snprintf(payload, sizeof(payload), "%u", resources->procs);
 
-        err = nsh_cgroup_write_file(cgroup_fd, "pids.max", payload);
+        err = cntr_cgroup_write_file(cgroup_fd, "pids.max", payload);
         if (err)
             return -1;
     }
@@ -73,7 +73,7 @@ static int nsh_cgroup_apply_limits(int cgroup_fd, nsh_resources_t *resources)
     if (resources->memory_bytes > 0) {
         snprintf(payload, sizeof(payload), "%lu", resources->memory_bytes);
 
-        err = nsh_cgroup_write_file(cgroup_fd, "memory.max", payload);
+        err = cntr_cgroup_write_file(cgroup_fd, "memory.max", payload);
         if (err)
             return -1;
     }
@@ -81,7 +81,7 @@ static int nsh_cgroup_apply_limits(int cgroup_fd, nsh_resources_t *resources)
     if (resources->memory_swap_bytes > 0) {
         snprintf(payload, sizeof(payload), "%lu", resources->memory_swap_bytes);
 
-        err = nsh_cgroup_write_file(cgroup_fd, "memory.swap.max", payload);
+        err = cntr_cgroup_write_file(cgroup_fd, "memory.swap.max", payload);
         if (err)
             return -1;
     }
@@ -89,27 +89,27 @@ static int nsh_cgroup_apply_limits(int cgroup_fd, nsh_resources_t *resources)
     return 0;
 }
 
-static void nsh_cgroup_path_resolve(uuid_t container_id, char *buf, size_t size)
+static void cntr_cgroup_path_resolve(uuid_t id, char *buf, size_t size)
 {
     char uuid_string[UUID_STR_LEN];
 
-    uuid_unparse_lower(container_id, uuid_string);
+    uuid_unparse_lower(id, uuid_string);
     snprintf(buf, size, "/sys/fs/cgroup/system.slice/nash-%s.scope", uuid_string);
 }
 
-static int nsh_cgroup_init(uuid_t container_id, nsh_resources_t *resources)
+static int cntr_cgroup_init(uuid_t id, cntr_resources_t *resources)
 {
     int fd;
     int err;
     int ret = 0;
 
-    fd = nsh_cgroup_open(container_id);
+    fd = cntr_cgroup_open(id);
     if (fd == -1) {
         ret = -1;
         goto out;
     }
 
-    err = nsh_cgroup_apply_limits(fd, resources);
+    err = cntr_cgroup_apply_limits(fd, resources);
     if (err) {
         ret = -1;
         goto out_close;
@@ -121,12 +121,12 @@ out:
     return ret;
 }
 
-int nsh_cgroup_create(uuid_t container_id, nsh_resources_t *resources)
+int cntr_cgroup_create(uuid_t id, cntr_resources_t *resources)
 {
     char path[PATH_MAX];
     int err;
 
-    nsh_cgroup_path_resolve(container_id, path, sizeof(path));
+    cntr_cgroup_path_resolve(id, path, sizeof(path));
 
     err = mkdir(path, S_IRWXU);
     if (err) {
@@ -134,24 +134,24 @@ int nsh_cgroup_create(uuid_t container_id, nsh_resources_t *resources)
         goto error;
     }
 
-    err = nsh_cgroup_init(container_id, resources);
+    err = cntr_cgroup_init(id, resources);
     if (err)
         goto error_del_cgroup;
 
     return 0;
 
 error_del_cgroup:
-    nsh_cgroup_delete(container_id);
+    cntr_cgroup_delete(id);
 error:
     return -1;
 }
 
-int nsh_cgroup_open(uuid_t container_id)
+int cntr_cgroup_open(uuid_t id)
 {
     char path[PATH_MAX];
     int fd;
 
-    nsh_cgroup_path_resolve(container_id, path, sizeof(path));
+    cntr_cgroup_path_resolve(id, path, sizeof(path));
 
     fd = open(path, O_DIRECTORY | O_PATH);
     if (fd == -1) {
@@ -162,12 +162,12 @@ int nsh_cgroup_open(uuid_t container_id)
     return fd;
 }
 
-int nsh_cgroup_delete(uuid_t container_id)
+int cntr_cgroup_delete(uuid_t id)
 {
     char path[PATH_MAX];
     int err;
 
-    nsh_cgroup_path_resolve(container_id, path, sizeof(path));
+    cntr_cgroup_path_resolve(id, path, sizeof(path));
 
     err = rmdir(path);
     if (err) {
