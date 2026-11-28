@@ -17,6 +17,7 @@
 #include <uuid/uuid.h>
 #include "utils/file.h"
 #include "container/common.h"
+#include "container/state.h"
 #include "container/filesystem.h"
 #include "container/capabilities.h"
 #include "container/creds.h"
@@ -298,6 +299,11 @@ int cntr_create(uuid_t id, cntr_config_t *config, pid_t *out)
         goto error_del_cgroup;
 
     err = cntr_start_time_resolve(state.pid, &state.start_time);
+    if (err)
+        // TODO: cleanup created process
+        goto error_del_cgroup;
+
+    err = cntr_state_dump(&state, workspace_path);
     if (err)
         // TODO: cleanup created process
         goto error_del_cgroup;

@@ -15,11 +15,4 @@ typedef struct {
     cntr_resources_t resources;
 } cntr_config_t;
 
-typedef struct {
-    uuid_t id;
-    pid_t pid;
-    uint64_t start_time;
-    cntr_config_t config;
-} cntr_state_t;
-
 #endif
