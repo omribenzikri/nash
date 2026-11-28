@@ -8,8 +8,11 @@
 #include <signal.h>
 #include <limits.h>
 #include <sys/syscall.h>
+#include <sys/stat.h>
 #include <linux/sched.h>
+#include <linux/limits.h>
 #include <uuid/uuid.h>
+#include "utils/file.h"
 #include "container/common.h"
 #include "container/filesystem.h"
 #include "container/capabilities.h"
@@ -18,6 +21,23 @@
 #include "container/container.h"
 
 #define CNTR_GEN_HOSTNAME_LEN 13
+
+static char *cntr_root_path = NULL;
+
+static int cntr_workspace_path_resolve(uuid_t id, char *buf, size_t size)
+{
+    char uuid_string[UUID_STR_LEN];
+
+    if (cntr_root_path == NULL) {
+        fprintf(stderr, "[x] Failed to resolve workspace path, root not set\n");
+        return -1;
+    }
+
+    uuid_unparse_lower(id, uuid_string);
+    snprintf(buf, size, "%s/%s", cntr_root_path, uuid_string);
+
+    return 0;
+}
 
 static void cntr_hostname_generate(uuid_t id, char *buf, size_t size)
 {
@@ -147,12 +167,21 @@ static pid_t cntr_create_internal(uuid_t id, cntr_config_t *config)
 
 int cntr_create(uuid_t id, cntr_config_t *config)
 {
+    char workspace_path[PATH_MAX];
     pid_t pid;
     int err;
 
+    cntr_workspace_path_resolve(id, workspace_path, sizeof(workspace_path));
+
+    err = mkdir(workspace_path, S_IRWXU);
+    if (err) {
+        perror("[x] Failed to create container workspace");
+        goto error;
+    }
+
     err = cntr_cgroup_create(id, &config->resources);
     if (err)
-        goto error;
+        goto error_del_workspace;
 
     pid = cntr_create_internal(id, config);
     if (pid == -1)
@@ -162,17 +191,52 @@ int cntr_create(uuid_t id, cntr_config_t *config)
 
 error_del_cgroup:
     cntr_cgroup_delete(id);
+error_del_workspace:
+    err = rmdir_recursive(workspace_path);
+    if (err)
+        perror("[x] Failed to delete container workspace");
 error:
     return -1;
 }
 
 int cntr_delete(uuid_t id)
 {
+    char workspace_path[PATH_MAX];
     int err;
+
+    cntr_workspace_path_resolve(id, workspace_path, sizeof(workspace_path));
 
     err = cntr_cgroup_delete(id);
     if (err)
         return -1;
+
+    err = rmdir_recursive(workspace_path);
+    if (err) {
+        perror("[x] Failed to delete container workspace");
+        return -1;
+    }
+
+    return 0;
+}
+
+int cntr_settings_set_root(const char *path)
+{
+    char *copy;
+
+    if (path == NULL) {
+        fprintf(stderr, "[x] Failed to set root, null provided\n");
+        return -1;
+    }
+
+    copy = strdup(path);
+    if (copy == NULL) {
+        perror("[x] Failed to allocate root path");
+        return -1;
+    }
+
+    if (cntr_root_path != NULL)
+        free(cntr_root_path);
+    cntr_root_path = copy;
 
     return 0;
 }

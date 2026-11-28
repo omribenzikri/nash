@@ -7,4 +7,6 @@
 int cntr_create(uuid_t id, cntr_config_t *config);
 int cntr_delete(uuid_t id);
 
+int cntr_settings_set_root(const char *path);
+
 #endif

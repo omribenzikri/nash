@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <sys/stat.h>
+#include <container/container.h>
 #include "utils/file.h"
 #include "engine/common/constants.h"
 #include "engine/persistence/database.h"
@@ -30,21 +31,27 @@ static int nsh_engine_workdir_create()
     return 0;
 }
 
-int nsh_engine_startup()
+static int nsh_engine_tempdir_create()
 {
     int err;
 
-    err = nsh_engine_workdir_create();
+    err = mkdir_missing(NSH_TEMPDIR, S_IRWXU);
     if (err) {
-        fprintf(stderr, "[x] Failed to create engine workdir\n");
-        return -1;
-    }
-
-    err = nsh_database_create();
-    if (err) {
-        fprintf(stderr, "[x] Failed to initialize the engine database\n");
+        perror("[x] Failed to create " NSH_TEMPDIR);
         return -1;
     }
 
     return 0;
+}
+
+int nsh_engine_startup()
+{
+    int err;
+
+    err = nsh_engine_workdir_create() ||
+          nsh_engine_tempdir_create() ||
+          nsh_database_create()       ||
+          cntr_settings_set_root(NSH_TEMPDIR);
+
+    return err ? -1 : 0;
 }

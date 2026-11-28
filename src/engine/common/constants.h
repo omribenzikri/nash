@@ -5,4 +5,6 @@
 #define NSH_WORKDIR_CONTAINERS NSH_WORKDIR "/containers"
 #define NSH_WORKDIR_IMAGES NSH_WORKDIR "/images"
 
+#define NSH_TEMPDIR "/run/nash"
+
 #endif
