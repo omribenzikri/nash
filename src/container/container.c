@@ -2,6 +2,8 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 #include <assert.h>
 #include <unistd.h>
@@ -24,6 +26,119 @@
 #define CNTR_GEN_HOSTNAME_LEN 13
 
 static char *cntr_root_path = NULL;
+
+static int cntr_proc_starttime_get(pid_t pid, uint64_t *out)
+{
+    char path[PATH_MAX];
+    FILE *stream;
+    char buffer[4096];
+    size_t nread;
+    char *cursor;
+    char *end;
+    int ret = 0;
+
+    snprintf(path, sizeof(path), "/proc/%d/stat", pid);
+
+    stream = fopen(path, "r");
+    if (stream == NULL) {
+        perror("[x] Failed to open process stat file");
+        ret = -1;
+        goto out;
+    }
+
+    nread = fread(buffer, 1, sizeof(buffer) - 1, stream);
+    if (nread == 0) {
+        perror("[x] Failed to read from process stat file");
+        ret = -1;
+        goto out_close_stream;
+    }
+    buffer[nread] = '\0';
+
+    // Skip the comm field (which can contain spaces)
+    cursor = strrchr(buffer, ')');
+    if (cursor == NULL) {
+        fprintf(stderr, "[x] Failed to parse process stat file\n");
+        ret = -1;
+        goto out_close_stream;
+    }
+    cursor += 3;
+
+    // Skip fields 3..21
+    for (int i = 0; i < 19; i++) {
+        cursor = strchr(cursor, ' ');
+        if (cursor == NULL) {
+            fprintf(stderr, "[x] Failed to parse process stat file\n");
+            ret = -1;
+            goto out_close_stream;
+        }
+        cursor++;
+    }
+
+    *out = strtoull(cursor, &end, 10);
+    if (end == cursor) {
+        fprintf(stderr, "[x] Failed to parse process start time\n");
+        ret = -1;
+        goto out_close_stream;
+    }
+
+out_close_stream:
+    fclose(stream);
+out:
+    return ret;
+}
+
+static int cntr_proc_btime_get(uint64_t *out)
+{
+    FILE *stream;
+    char buffer[4096];
+    uint64_t btime;
+    int matched;
+    int ret = 0;
+
+    stream = fopen("/proc/stat", "r");
+    if (stream == NULL) {
+        perror("[x] Failed to open stat file");
+        ret = -1;
+        goto out;
+    }
+
+    while (fgets(buffer, sizeof(buffer), stream) != NULL) {
+        matched = sscanf(buffer, "btime %lu", &btime);
+        if (matched == 1) {
+            *out = btime;
+            goto out_close_stream;
+        }
+    }
+
+    fprintf(stderr, "[x] Failed to read boot time\n");
+    ret = -1;
+
+out_close_stream:
+    fclose(stream);
+out:
+    return ret;
+}
+
+static int cntr_start_time_resolve(pid_t pid, uint64_t *out)
+{
+    uint64_t ticks;
+    uint64_t btime;
+    long hz;
+    int err;
+
+    err = cntr_proc_starttime_get(pid, &ticks);
+    if (err)
+        return -1;
+
+    err = cntr_proc_btime_get(&btime);
+    if (err)
+        return -1;
+
+    hz = sysconf(_SC_CLK_TCK);
+    *out = (btime + (ticks / hz));
+
+    return 0;
+}
 
 static int cntr_workspace_path_resolve(uuid_t id, char *buf, size_t size)
 {
@@ -51,25 +166,6 @@ static void cntr_hostname_generate(uuid_t id, char *buf, size_t size)
 
     hostname = uuid_string + sizeof(uuid_string) - CNTR_GEN_HOSTNAME_LEN;
     snprintf(buf, size, "%s", hostname);
-}
-
-static int cntr_hostname_set(uuid_t id, const char *hostname)
-{
-    char buf[HOST_NAME_MAX];
-    int err;
-
-    if (hostname == NULL)
-        cntr_hostname_generate(id, buf, sizeof(buf));
-    else
-        snprintf(buf, sizeof(buf), "%s", hostname);
-
-    err = sethostname(buf, strlen(buf));
-    if (err) {
-        perror("[x] Failed to set container hostname");
-        return -1;
-    }
-
-    return 0;
 }
 
 static int cntr_exec(cntr_config_t *config)
@@ -108,12 +204,17 @@ error:
     return -1;
 }
 
-static int cntr_init(uuid_t id, cntr_config_t *config)
+static int cntr_init(cntr_config_t *config)
 {
     int err;
 
-    err = cntr_hostname_set(id, config->hostname) ||
-          cntr_pivot_root(config->rootfs_path, config->workdir) ||
+    err = sethostname(config->hostname, strlen(config->hostname));
+    if (err) {
+        perror("[x] Failed to set container hostname");
+        return -1;
+    }
+
+    err = cntr_pivot_root(config->rootfs_path, config->workdir) ||
           cntr_filesystem_init() ||
           cntr_caps_drop() ||
           cntr_creds_set(&config->creds);
@@ -124,8 +225,7 @@ static int cntr_init(uuid_t id, cntr_config_t *config)
     exit(EXIT_FAILURE);
 }
 
-static pid_t cntr_clone(
-    uuid_t id, cntr_config_t *config, int cgroup_fd)
+static pid_t cntr_clone(cntr_config_t *config, int cgroup_fd)
 {
     const int namespace_flags =
         CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWPID |
@@ -144,7 +244,7 @@ static pid_t cntr_clone(
     }
 
     if (pid == 0) {
-        cntr_init(id, config);
+        cntr_init(config);
         assert(1);
     }
 
@@ -160,7 +260,7 @@ static pid_t cntr_create_internal(uuid_t id, cntr_config_t *config)
     if (cgroup_fd == -1)
         return -1;
 
-    pid = cntr_clone(id, config, cgroup_fd);
+    pid = cntr_clone(config, cgroup_fd);
     close(cgroup_fd);
 
     return pid;
@@ -168,9 +268,15 @@ static pid_t cntr_create_internal(uuid_t id, cntr_config_t *config)
 
 int cntr_create(uuid_t id, cntr_config_t *config, pid_t *out)
 {
+    char hostname[HOST_NAME_MAX];
     char workspace_path[PATH_MAX];
-    pid_t pid;
+    cntr_state_t state = {0};
     int err;
+
+    if (config->hostname == NULL) {
+        cntr_hostname_generate(id, hostname, sizeof(hostname));
+        config->hostname = hostname;
+    }
 
     cntr_workspace_path_resolve(id, workspace_path, sizeof(workspace_path));
 
@@ -184,11 +290,19 @@ int cntr_create(uuid_t id, cntr_config_t *config, pid_t *out)
     if (err)
         goto error_del_workspace;
 
-    pid = cntr_create_internal(id, config);
-    if (pid == -1)
+    uuid_copy(state.id, id);
+    state.config = *config;
+
+    state.pid = cntr_create_internal(id, config);
+    if (state.pid == -1)
         goto error_del_cgroup;
 
-    *out = pid;
+    err = cntr_start_time_resolve(state.pid, &state.start_time);
+    if (err)
+        // TODO: cleanup created process
+        goto error_del_cgroup;
+
+    *out = state.pid;
     return 0;
 
 error_del_cgroup:
