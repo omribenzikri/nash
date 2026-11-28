@@ -223,25 +223,25 @@ int cntr_filesystem_init()
 
 // Ensures that name conflicts with pre-existing image files
 // or directories are practically impossible
-static void cntr_old_root_name_generate(char *buf, size_t size)
+static void cntr_old_root_path_generate(char *buf, size_t size)
 {
+    char base[UUID_STR_LEN];
     uuid_t uuid;
-    char name[UUID_STR_LEN];
 
     uuid_generate_random(uuid);
-    uuid_unparse_lower(uuid, name);
-    snprintf(buf, size, "%s", name);
+    uuid_unparse_lower(uuid, base);
+    snprintf(buf, size, "/%s", base);
 }
 
 int cntr_pivot_root(const char *root, const char *cwd)
 {
-    char old_root_name[NAME_MAX];
-    char old_root_path[PATH_MAX];
+    char old_root_rel[PATH_MAX];
+    char old_root_abs[PATH_MAX * 2];
     int err;
     int ret = 0;
 
-    cntr_old_root_name_generate(old_root_name, sizeof(old_root_name));
-    snprintf(old_root_path, sizeof(old_root_path), "%s/%s", root, old_root_name);
+    cntr_old_root_path_generate(old_root_rel, sizeof(old_root_rel));
+    snprintf(old_root_abs, sizeof(old_root_abs), "%s/%s", root, old_root_rel);
 
     err = mount(NULL, "/", NULL, MS_PRIVATE | MS_REC, NULL);
     if (err) {
@@ -255,17 +255,17 @@ int cntr_pivot_root(const char *root, const char *cwd)
         return -1;
     }
 
-    err = mkdir(old_root_path, S_IRWXU);
+    err = mkdir(old_root_abs, S_IRWXU);
     if (err) {
         perror("[x] Failed to create old rootfs directory");
         return -1;
     }
 
-    err = syscall(SYS_pivot_root, root, old_root_path);
+    err = syscall(SYS_pivot_root, root, old_root_abs);
     if (err) {
         perror("[x] Failed to pivot root");
 
-        err = rmdir(old_root_path);
+        err = rmdir(old_root_abs);
         if (err)
             perror("[x] Failed to delete old rootfs directory");
 
@@ -278,13 +278,13 @@ int cntr_pivot_root(const char *root, const char *cwd)
         ret = -1;
     }
 
-    err = umount2(old_root_path, MNT_DETACH);
+    err = umount2(old_root_rel, MNT_DETACH);
     if (err) {
         perror("[x] Failed to unmount old rootfs");
         ret = -1;
     }
 
-    err = rmdir(old_root_path);
+    err = rmdir(old_root_rel);
     if (err) {
         perror("[x] Failed to delete old rootfs directory");
         ret = -1;

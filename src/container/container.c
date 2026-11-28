@@ -9,6 +9,7 @@
 #include <limits.h>
 #include <sys/syscall.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <linux/sched.h>
 #include <linux/limits.h>
 #include <uuid/uuid.h>
@@ -62,7 +63,7 @@ static int cntr_hostname_set(uuid_t id, const char *hostname)
     else
         snprintf(buf, sizeof(buf), "%s", hostname);
 
-    err = sethostname(hostname, strlen(hostname));
+    err = sethostname(buf, strlen(buf));
     if (err) {
         perror("[x] Failed to set container hostname");
         return -1;
@@ -117,7 +118,7 @@ static int cntr_init(uuid_t id, cntr_config_t *config)
           cntr_caps_drop() ||
           cntr_creds_set(&config->creds);
     if (err)
-        return -1;
+        exit(EXIT_FAILURE);
 
     cntr_exec(config);
     exit(EXIT_FAILURE);
@@ -165,7 +166,7 @@ static pid_t cntr_create_internal(uuid_t id, cntr_config_t *config)
     return pid;
 }
 
-int cntr_create(uuid_t id, cntr_config_t *config)
+int cntr_create(uuid_t id, cntr_config_t *config, pid_t *out)
 {
     char workspace_path[PATH_MAX];
     pid_t pid;
@@ -187,6 +188,7 @@ int cntr_create(uuid_t id, cntr_config_t *config)
     if (pid == -1)
         goto error_del_cgroup;
 
+    *out = pid;
     return 0;
 
 error_del_cgroup:

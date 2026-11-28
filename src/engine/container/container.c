@@ -130,8 +130,8 @@ nsh_container_t *nsh_container_create(nsh_container_params_t *params)
     if (err)
         goto error_free_container;
 
-    container->pid = cntr_create(container->id, &container->config);
-    if (container->pid == -1)
+    err = cntr_create(container->id, &container->config, &container->pid);
+    if (err)
         goto error_cleanup_destroy_container;
 
     return container;
